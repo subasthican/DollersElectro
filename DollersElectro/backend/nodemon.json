@@ -1,0 +1,14 @@
+{
+  "watch": ["*.js", "routes/", "models/", "middleware/", "controllers/"],
+  "ignore": ["node_modules/", "*.log", "uploads/", "scripts/", "tests/"],
+  "ext": "js,json",
+  "env": {
+    "NODE_ENV": "development"
+  },
+  "delay": "1000"
+}
+
+
+
+
+
