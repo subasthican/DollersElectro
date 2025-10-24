@@ -1,0 +1,702 @@
+import React, { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
+import {
+  PlusIcon,
+  PencilIcon,
+  TrashIcon,
+  ArrowLeftIcon,
+  XMarkIcon,
+  EyeIcon,
+  EyeSlashIcon,
+  HomeIcon,
+  UserGroupIcon,
+  ChartBarIcon,
+  CheckCircleIcon,
+  XCircleIcon,
+  ExclamationTriangleIcon
+} from '@heroicons/react/24/outline';
+import { toast } from 'react-hot-toast';
+import { 
+  Customer, 
+  customerHelpers,
+  getCustomers,
+  createCustomer,
+  updateCustomer,
+  deleteCustomer,
+  toggleCustomerStatus
+} from '../../services/api/customersAPI';
+
+const AdminCustomersPage: React.FC = () => {
+  const navigate = useNavigate();
+  const [customers, setCustomers] = useState<Customer[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [showModal, setShowModal] = useState(false);
+  const [modalType, setModalType] = useState<'add' | 'edit'>('add');
+  const [editingItem, setEditingItem] = useState<Customer | null>(null);
+  const [customerForm, setCustomerForm] = useState({
+    firstName: '',
+    lastName: '',
+    email: '',
+    phone: '',
+    username: ''
+  });
+  const [statusFilter, setStatusFilter] = useState<'all' | 'active' | 'inactive'>('all');
+  const [searchTerm, setSearchTerm] = useState('');
+
+  // Fetch customers from database
+  const fetchCustomers = async () => {
+    try {
+      setLoading(true);
+      setError(null);
+      const response = await getCustomers();
+      
+      if (response.success && response.data.customers) {
+        setCustomers(response.data.customers);
+      } else {
+        setError('Failed to fetch customers');
+      }
+    } catch (error) {
+
+      setError('Failed to fetch customers');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchCustomers();
+  }, []);
+
+  // Filter customers based on search and status
+  const filteredCustomers = customers.filter(customer => {
+    const matchesSearch = 
+      customer.firstName.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      customer.lastName.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      customer.email.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      (customer.username && customer.username.toLowerCase().includes(searchTerm.toLowerCase()));
+    
+    const matchesStatus = statusFilter === 'all' || 
+      (statusFilter === 'active' && customer.isActive) ||
+      (statusFilter === 'inactive' && !customer.isActive);
+    
+    return matchesSearch && matchesStatus;
+  });
+
+  const openAddModal = () => {
+    setModalType('add');
+    setEditingItem(null);
+    setCustomerForm({
+      firstName: '',
+      lastName: '',
+      email: '',
+      phone: '',
+      username: ''
+    });
+    setShowModal(true);
+  };
+
+  const handleEditCustomer = (customer: Customer) => {
+    setEditingItem(customer);
+    setCustomerForm({
+      firstName: customer.firstName,
+      lastName: customer.lastName,
+      email: customer.email,
+      phone: customer.phone || '',
+      username: customer.username || ''
+    });
+    setModalType('edit');
+    setShowModal(true);
+  };
+
+  const closeModal = () => {
+    setShowModal(false);
+    setEditingItem(null);
+    setCustomerForm({
+      firstName: '',
+      lastName: '',
+      email: '',
+      phone: '',
+      username: ''
+    });
+  };
+
+  const handleAddCustomer = async () => {
+    // Enhanced validation
+    if (!customerForm.firstName?.trim() || !customerForm.lastName?.trim() || !customerForm.email?.trim()) {
+      toast.error('Please fill in all required fields (First Name, Last Name, Email)');
+      return;
+    }
+
+    // Email validation
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(customerForm.email)) {
+      toast.error('Please enter a valid email address');
+      return;
+    }
+
+    try {
+
+      const response = await createCustomer({
+        firstName: customerForm.firstName.trim(),
+        lastName: customerForm.lastName.trim(),
+        email: customerForm.email.trim().toLowerCase(),
+        phone: customerForm.phone?.trim() || undefined,
+        username: customerForm.username?.trim() || undefined
+      });
+
+      if (response.success && response.data.customer) {
+        toast.success(`Customer created successfully! Temporary password: ${response.data.temporaryPassword}`);
+        closeModal();
+        fetchCustomers(); // Refresh the list
+      } else {
+        toast.error(response.message || 'Failed to create customer');
+      }
+    } catch (error: any) {
+
+      const errorMessage = error.response?.data?.message || error.message || 'Failed to create customer';
+      toast.error(`Create failed: ${errorMessage}`);
+    }
+  };
+
+  const handleUpdateCustomer = async () => {
+    if (!editingItem) return;
+
+    // Enhanced validation
+    if (!customerForm.firstName?.trim() || !customerForm.lastName?.trim() || !customerForm.email?.trim()) {
+      toast.error('Please fill in all required fields (First Name, Last Name, Email)');
+      return;
+    }
+
+    // Email validation
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(customerForm.email)) {
+      toast.error('Please enter a valid email address');
+      return;
+    }
+
+    try {
+
+      const response = await updateCustomer(editingItem._id, {
+        firstName: customerForm.firstName.trim(),
+        lastName: customerForm.lastName.trim(),
+        email: customerForm.email.trim().toLowerCase(),
+        phone: customerForm.phone?.trim() || undefined,
+        username: customerForm.username?.trim() || undefined
+      });
+
+      if (response.success && response.data.customer) {
+        toast.success('Customer updated successfully!');
+        closeModal();
+        fetchCustomers(); // Refresh the list
+      } else {
+        toast.error(response.message || 'Failed to update customer');
+      }
+    } catch (error: any) {
+
+      const errorMessage = error.response?.data?.message || error.message || 'Failed to update customer';
+      toast.error(`Update failed: ${errorMessage}`);
+    }
+  };
+
+  const handleDeleteCustomer = async (customerId: string) => {
+    if (window.confirm('Are you sure you want to deactivate this customer? They will not be able to place orders.')) {
+      try {
+        const response = await deleteCustomer(customerId);
+        
+        if (response.success) {
+          toast.success('Customer deactivated successfully!');
+          fetchCustomers(); // Refresh the list
+        } else {
+          toast.error(response.message || 'Failed to deactivate customer');
+        }
+      } catch (error) {
+
+        toast.error('Failed to deactivate customer');
+      }
+    }
+  };
+
+  const handleToggleCustomerStatus = async (customerId: string, currentStatus: boolean) => {
+    try {
+      const response = await toggleCustomerStatus(customerId, !currentStatus);
+      
+      if (response.success && response.data.customer) {
+        toast.success(`Customer ${!currentStatus ? 'activated' : 'deactivated'} successfully!`);
+        fetchCustomers(); // Refresh the list
+      } else {
+        toast.error(response.message || 'Failed to toggle customer status');
+      }
+    } catch (error) {
+
+      toast.error('Failed to toggle customer status');
+    }
+  };
+
+  const handleBulkAction = async (action: 'activate' | 'deactivate') => {
+    try {
+      const customersToUpdate = filteredCustomers.filter(c => 
+        action === 'activate' ? !c.isActive : c.isActive
+      );
+
+      if (customersToUpdate.length === 0) {
+        toast.success(`No customers to ${action}`);
+        return;
+      }
+
+      const promises = customersToUpdate.map(customer => 
+        toggleCustomerStatus(customer._id, action === 'activate')
+      );
+
+      await Promise.all(promises);
+      toast.success(`All customers ${action}d successfully!`);
+      fetchCustomers();
+    } catch (error) {
+
+      toast.error(`Failed to ${action} customers`);
+    }
+  };
+
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-blue-50 via-white to-purple-50 flex items-center justify-center">
+        <div className="text-center backdrop-blur-2xl bg-white/80 rounded-3xl p-12 shadow-2xl border-2 border-white/60">
+          <div className="animate-spin rounded-full h-20 w-20 border-4 border-purple-200 border-t-purple-600 mx-auto"></div>
+          <p className="mt-6 text-gray-700 font-semibold text-lg">Loading customers...</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-blue-50 via-white to-purple-50 flex items-center justify-center">
+        <div className="text-center backdrop-blur-2xl bg-white/80 rounded-3xl p-12 shadow-2xl border-2 border-white/60">
+          <div className="text-6xl mb-6">⚠️</div>
+          <h2 className="text-2xl font-bold text-gray-900 mb-3">Error Loading Customers</h2>
+          <p className="text-gray-600 mb-6">{error}</p>
+          <button
+            onClick={fetchCustomers}
+            className="backdrop-blur-2xl bg-gradient-to-br from-green-500/90 to-green-600/90 hover:from-green-600/95 hover:to-green-700/95 text-white px-6 py-3 rounded-2xl shadow-xl shadow-green-500/30 hover:shadow-green-500/50 border-2 border-white/30 hover:border-white/50 transition-all duration-300 transform hover:scale-105 font-semibold"
+          >
+            Try Again
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="min-h-screen bg-gradient-to-br from-blue-50 via-white to-purple-50">
+      <div className="sticky top-0 z-40 backdrop-blur-2xl bg-white/70 border-b border-white/60 shadow-lg shadow-gray-200/50">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+          {/* Navigation Breadcrumb */}
+          <div className="py-4 border-b border-gray-200">
+            <nav className="flex items-center space-x-2 text-sm text-gray-500">
+              <button
+                onClick={() => navigate('/admin')}
+                className="flex items-center hover:text-gray-700 transition-colors"
+              >
+                <HomeIcon className="w-4 h-4 mr-1" />
+                Admin Dashboard
+              </button>
+              <span className="text-gray-400">/</span>
+              <span className="text-gray-900 font-medium">Customer Management</span>
+            </nav>
+          </div>
+          
+          <div className="py-6">
+            {/* Mobile Navigation */}
+            <div className="flex items-center justify-between mb-4 md:hidden">
+              <button
+                onClick={() => navigate(-1)}
+                className="p-2 text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded-lg transition-colors"
+                title="Go Back"
+              >
+                <ArrowLeftIcon className="w-6 h-6" />
+              </button>
+              <h1 className="text-xl font-bold text-gray-900">Customer Management</h1>
+              <div className="w-10"></div> {/* Spacer for centering */}
+            </div>
+
+            {/* Desktop Navigation */}
+            <div className="hidden md:flex justify-between items-center">
+              <div className="flex items-center space-x-4">
+                <button
+                  onClick={() => navigate(-1)}
+                  className="p-2 text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded-lg transition-colors"
+                  title="Go Back"
+                >
+                  <ArrowLeftIcon className="w-6 h-6" />
+                </button>
+                <div>
+                  <h1 className="text-3xl font-bold text-gray-900 flex items-center">
+                    <UserGroupIcon className="w-8 h-8 mr-3 text-blue-600" />
+                    Customer Management
+                  </h1>
+                  <p className="text-gray-600 mt-1">Manage customer accounts, status, and information</p>
+                </div>
+              </div>
+              
+              <div className="flex items-center space-x-4">
+                <button
+                  onClick={() => openAddModal()}
+                  className="backdrop-blur-2xl bg-gradient-to-br from-purple-500/90 to-purple-600/90 hover:from-purple-600/95 hover:to-purple-700/95 text-white px-6 py-3 rounded-2xl shadow-xl shadow-purple-500/30 hover:shadow-purple-500/50 border-2 border-white/30 hover:border-white/50 transition-all duration-300 transform hover:scale-105 font-semibold flex items-center"
+                >
+                  <PlusIcon className="h-5 w-5 mr-2" />
+                  Add Customer
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div className="max-w-7xl mx-auto py-6 sm:px-6 lg:px-8">
+        {/* Stats Cards - Mobile Responsive & Glassy iOS 26 */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-6 mb-6 sm:mb-8">
+          <div className="backdrop-blur-2xl bg-white/70 rounded-2xl shadow-xl shadow-blue-500/10 p-4 sm:p-6 border-2 border-white/60 hover:border-blue-200/60 transition-all duration-300 hover:scale-105">
+            <div className="flex items-center">
+              <div className="flex-shrink-0">
+                <UserGroupIcon className="h-6 w-6 sm:h-8 sm:w-8 text-blue-600" />
+              </div>
+              <div className="ml-4 sm:ml-5 w-0 flex-1">
+                <dl>
+                  <dt className="text-xs sm:text-sm font-medium text-gray-600 truncate">Total Customers</dt>
+                  <dd className="text-base sm:text-lg font-bold bg-gradient-to-r from-gray-700 to-gray-900 bg-clip-text text-transparent">{customers.length}</dd>
+                </dl>
+              </div>
+            </div>
+          </div>
+
+          <div className="backdrop-blur-2xl bg-white/70 rounded-2xl shadow-xl shadow-green-500/10 p-4 sm:p-6 border-2 border-white/60 hover:border-green-200/60 transition-all duration-300 hover:scale-105">
+            <div className="flex items-center">
+              <div className="flex-shrink-0">
+                <CheckCircleIcon className="h-6 w-6 sm:h-8 sm:w-8 text-green-600" />
+              </div>
+              <div className="ml-4 sm:ml-5 w-0 flex-1">
+                <dl>
+                  <dt className="text-xs sm:text-sm font-medium text-gray-600 truncate">Active Customers</dt>
+                  <dd className="text-base sm:text-lg font-bold bg-gradient-to-r from-gray-700 to-gray-900 bg-clip-text text-transparent">{customers.filter(c => c.isActive).length}</dd>
+                </dl>
+              </div>
+            </div>
+          </div>
+
+          <div className="backdrop-blur-2xl bg-white/70 rounded-2xl shadow-xl shadow-red-500/10 p-4 sm:p-6 border-2 border-white/60 hover:border-red-200/60 transition-all duration-300 hover:scale-105">
+            <div className="flex items-center">
+              <div className="flex-shrink-0">
+                <XCircleIcon className="h-6 w-6 sm:h-8 sm:w-8 text-red-600" />
+              </div>
+              <div className="ml-4 sm:ml-5 w-0 flex-1">
+                <dl>
+                  <dt className="text-xs sm:text-sm font-medium text-gray-600 truncate">Inactive Customers</dt>
+                  <dd className="text-base sm:text-lg font-bold bg-gradient-to-r from-gray-700 to-gray-900 bg-clip-text text-transparent">{customers.filter(c => !c.isActive).length}</dd>
+                </dl>
+              </div>
+            </div>
+          </div>
+
+          <div className="backdrop-blur-2xl bg-white/70 rounded-2xl shadow-xl shadow-purple-500/10 p-4 sm:p-6 border-2 border-white/60 hover:border-purple-200/60 transition-all duration-300 hover:scale-105">
+            <div className="flex items-center">
+              <div className="flex-shrink-0">
+                <ChartBarIcon className="h-6 w-6 sm:h-8 sm:w-8 text-purple-600" />
+              </div>
+              <div className="ml-4 sm:ml-5 w-0 flex-1">
+                <dl>
+                  <dt className="text-xs sm:text-sm font-medium text-gray-600 truncate">Filtered Results</dt>
+                  <dd className="text-base sm:text-lg font-bold bg-gradient-to-r from-gray-700 to-gray-900 bg-clip-text text-transparent">{filteredCustomers.length}</dd>
+                </dl>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Main Content - Mobile Responsive & Glassy */}
+        <div className="backdrop-blur-2xl bg-white/70 rounded-2xl shadow-xl shadow-gray-400/30 border-2 border-white/60">
+          <div className="px-4 sm:px-6 py-3 sm:py-4 border-b border-white/40">
+            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between space-y-3 sm:space-y-0">
+              <h3 className="text-base sm:text-lg font-bold bg-gradient-to-r from-gray-700 to-gray-900 bg-clip-text text-transparent">Customer Management</h3>
+              <div className="flex flex-wrap gap-2 sm:gap-3">
+                <button
+                  onClick={() => handleBulkAction('activate')}
+                  className="flex-1 sm:flex-initial backdrop-blur-2xl bg-gradient-to-br from-green-500/90 to-green-600/90 hover:from-green-600/95 hover:to-green-700/95 text-white px-3 sm:px-5 py-2 sm:py-2.5 rounded-xl sm:rounded-2xl shadow-lg shadow-green-500/30 hover:shadow-green-500/50 border-2 border-white/30 hover:border-white/50 transition-all duration-300 transform hover:scale-105 font-semibold text-xs sm:text-sm flex items-center justify-center"
+                >
+                  ✅ Activate All
+                </button>
+                <button
+                  onClick={() => handleBulkAction('deactivate')}
+                  className="flex-1 sm:flex-initial backdrop-blur-2xl bg-gradient-to-br from-orange-500/90 to-orange-600/90 hover:from-orange-600/95 hover:to-orange-700/95 text-white px-3 sm:px-5 py-2 sm:py-2.5 rounded-xl sm:rounded-2xl shadow-lg shadow-orange-500/30 hover:shadow-orange-500/50 border-2 border-white/30 hover:border-white/50 transition-all duration-300 transform hover:scale-105 font-semibold text-xs sm:text-sm flex items-center justify-center"
+                >
+                  ⏸️ Deactivate All
+                </button>
+              </div>
+            </div>
+          </div>
+          
+          {/* Search and Filters - Mobile Responsive */}
+          <div className="px-4 sm:px-6 py-3 sm:py-4 border-b border-white/40">
+            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between space-y-3 sm:space-y-0 sm:space-x-4">
+              <div className="flex-1 max-w-lg">
+                <div className="relative">
+                  <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                    <svg className="h-4 w-4 sm:h-5 sm:w-5 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                    </svg>
+                  </div>
+                  <input
+                    type="text"
+                    placeholder="Search customers..."
+                    value={searchTerm}
+                    onChange={(e) => setSearchTerm(e.target.value)}
+                    className="block w-full pl-9 sm:pl-10 pr-3 py-2 backdrop-blur-xl bg-white/70 border-2 border-white/60 rounded-xl focus:ring-2 focus:ring-green-500 focus:border-green-300 transition-all duration-300 text-sm sm:text-base placeholder-gray-500"
+                  />
+                </div>
+              </div>
+              
+              <div className="flex items-center space-x-4">
+                <select
+                  value={statusFilter}
+                  onChange={(e) => setStatusFilter(e.target.value as 'all' | 'active' | 'inactive')}
+                  className="block w-full pl-3 pr-10 py-2 text-base border border-gray-300 focus:outline-none focus:ring-green-500 focus:border-green-500 sm:text-sm rounded-md"
+                >
+                  <option value="all">All Statuses</option>
+                  <option value="active">Active Only</option>
+                  <option value="inactive">Inactive Only</option>
+                </select>
+              </div>
+            </div>
+          </div>
+          
+          {/* Customers Table */}
+          <div className="overflow-x-auto">
+            <table className="min-w-full divide-y divide-gray-200">
+              <thead className="bg-gray-50">
+                <tr>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Customer</th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Contact</th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Join Date</th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Verification</th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>
+                </tr>
+              </thead>
+              <tbody className="bg-white divide-y divide-gray-200">
+                {filteredCustomers.length === 0 ? (
+                  <tr>
+                    <td colSpan={6} className="px-6 py-12 text-center">
+                      <div className="flex flex-col items-center">
+                        <ExclamationTriangleIcon className="h-12 w-12 text-gray-400 mb-4" />
+                        <h3 className="text-lg font-medium text-gray-900 mb-2">No customers found</h3>
+                        <p className="text-gray-500 mb-4">
+                          {searchTerm || statusFilter !== 'all' 
+                            ? 'No customers match your current filters.' 
+                            : 'Get started by adding your first customer.'
+                          }
+                        </p>
+                        {!searchTerm && statusFilter === 'all' && (
+                          <button
+                            onClick={() => openAddModal()}
+                            className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md text-white bg-green-600 hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500"
+                          >
+                            <PlusIcon className="h-4 w-4 mr-2" />
+                            Add Customer
+                          </button>
+                        )}
+                      </div>
+                    </td>
+                  </tr>
+                ) : (
+                  filteredCustomers.map((customer) => {
+                    const statusInfo = customerHelpers.getStatusInfo(customer);
+                    return (
+                      <tr key={customer._id} className="hover:bg-gray-50 transition-colors duration-150">
+                        <td className="px-6 py-4 whitespace-nowrap">
+                          <div className="flex items-center">
+                            <div className="flex-shrink-0 h-10 w-10">
+                              <div className="h-10 w-10 rounded-full bg-green-100 flex items-center justify-center">
+                                <span className="text-sm font-medium text-green-700">
+                                  {customerHelpers.getInitials(customer)}
+                                </span>
+                              </div>
+                            </div>
+                            <div className="ml-4">
+                              <div className="text-sm font-medium text-gray-900">
+                                {customerHelpers.getFullName(customer)}
+                              </div>
+                              <div className="text-sm text-gray-500">ID: {customer.customerId}</div>
+                              {customer.username && (
+                                <div className="text-xs text-gray-400">@{customer.username}</div>
+                              )}
+                            </div>
+                          </div>
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap">
+                          <div className="text-sm text-gray-900">{customer.email}</div>
+                          {customer.phone && (
+                            <div className="text-sm text-gray-500">{customer.phone}</div>
+                          )}
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap">
+                          <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${statusInfo.bgColor} ${statusInfo.textColor}`}>
+                            <span className={`w-2 h-2 rounded-full mr-2 ${statusInfo.dotColor}`}></span>
+                            {statusInfo.text}
+                          </span>
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                          {customerHelpers.formatJoinDate(customer.createdAt)}
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap">
+                          <div className="flex items-center space-x-2">
+                            <span className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-medium ${
+                              customer.isEmailVerified ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'
+                            }`}>
+                              {customer.isEmailVerified ? '✓ Email' : '✗ Email'}
+                            </span>
+                            <span className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-medium ${
+                              customer.isPhoneVerified ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'
+                            }`}>
+                              {customer.isPhoneVerified ? '✓ Phone' : '✗ Phone'}
+                            </span>
+                          </div>
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
+                          <div className="flex items-center space-x-2">
+                            <button
+                              onClick={() => handleEditCustomer(customer)}
+                              className="text-blue-600 hover:text-blue-900 p-1 rounded hover:bg-blue-50 transition-colors duration-150"
+                              title="Edit Customer"
+                            >
+                              <PencilIcon className="h-4 w-4" />
+                            </button>
+                            <button
+                              onClick={() => handleToggleCustomerStatus(customer._id, customer.isActive)}
+                              className={`p-1 rounded transition-colors duration-150 ${
+                                customer.isActive 
+                                  ? 'text-blue-600 hover:text-orange-900 hover:bg-orange-50' 
+                                  : 'text-green-600 hover:text-green-900 hover:bg-green-50'
+                              }`}
+                              title={customer.isActive ? 'Deactivate Customer' : 'Activate Customer'}
+                            >
+                              {customer.isActive ? (
+                                <EyeSlashIcon className="h-4 w-4" />
+                              ) : (
+                                <EyeIcon className="h-4 w-4" />
+                              )}
+                            </button>
+                            <button
+                              onClick={() => handleDeleteCustomer(customer._id)}
+                              className="text-red-600 hover:text-red-900 p-1 rounded hover:bg-red-50 transition-colors duration-150"
+                              title="Deactivate Customer"
+                            >
+                              <TrashIcon className="h-4 w-4" />
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })
+                )}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
+      {/* Modal for Add/Edit */}
+      {showModal && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm overflow-y-auto h-full w-full z-50 flex items-start justify-center p-4">
+          <div className="relative my-8 w-full max-w-lg backdrop-blur-2xl bg-white/95 rounded-3xl shadow-2xl border-2 border-white/60 p-8">
+            <div className="flex items-center justify-between mb-6">
+              <h3 className="text-2xl font-bold bg-gradient-to-r from-purple-600 to-pink-600 bg-clip-text text-transparent">
+                {modalType === 'edit' ? '✏️ Edit Customer' : '👤 Add New Customer'}
+              </h3>
+              <button
+                onClick={closeModal}
+                className="text-gray-400 hover:text-gray-600 p-2 hover:bg-gray-100 rounded-xl transition-all duration-300"
+              >
+                <XMarkIcon className="h-6 w-6" />
+              </button>
+            </div>
+
+              <form className="space-y-4">
+                <div>
+                  <label className="block text-sm font-semibold text-gray-700 mb-2">First Name *</label>
+                  <input
+                    type="text"
+                    value={customerForm.firstName}
+                    onChange={(e) => setCustomerForm({ ...customerForm, firstName: e.target.value })}
+                    className="block w-full backdrop-blur-xl bg-white/60 border-2 border-white/40 rounded-2xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-purple-400/50 focus:border-purple-300 focus:bg-white/75 text-gray-900 placeholder-gray-500 shadow-sm transition-all duration-300"
+                    placeholder="Enter first name"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-sm font-semibold text-gray-700 mb-2">Last Name *</label>
+                  <input
+                    type="text"
+                    value={customerForm.lastName}
+                    onChange={(e) => setCustomerForm({ ...customerForm, lastName: e.target.value })}
+                    className="block w-full backdrop-blur-xl bg-white/60 border-2 border-white/40 rounded-2xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-purple-400/50 focus:border-purple-300 focus:bg-white/75 text-gray-900 placeholder-gray-500 shadow-sm transition-all duration-300"
+                    placeholder="Enter last name"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-sm font-semibold text-gray-700 mb-2">Email *</label>
+                  <input
+                    type="email"
+                    value={customerForm.email}
+                    onChange={(e) => setCustomerForm({ ...customerForm, email: e.target.value })}
+                    className="block w-full backdrop-blur-xl bg-white/60 border-2 border-white/40 rounded-2xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-purple-400/50 focus:border-purple-300 focus:bg-white/75 text-gray-900 placeholder-gray-500 shadow-sm transition-all duration-300"
+                    placeholder="Enter email address"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-sm font-semibold text-gray-700 mb-2">Phone</label>
+                  <input
+                    type="tel"
+                    value={customerForm.phone}
+                    onChange={(e) => setCustomerForm({ ...customerForm, phone: e.target.value })}
+                    className="block w-full backdrop-blur-xl bg-white/60 border-2 border-white/40 rounded-2xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-purple-400/50 focus:border-purple-300 focus:bg-white/75 text-gray-900 placeholder-gray-500 shadow-sm transition-all duration-300"
+                    placeholder="Enter phone number"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-sm font-semibold text-gray-700 mb-2">Username</label>
+                  <input
+                    type="text"
+                    value={customerForm.username}
+                    onChange={(e) => setCustomerForm({ ...customerForm, username: e.target.value })}
+                    className="block w-full backdrop-blur-xl bg-white/60 border-2 border-white/40 rounded-2xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-purple-400/50 focus:border-purple-300 focus:bg-white/75 text-gray-900 placeholder-gray-500 shadow-sm transition-all duration-300"
+                    placeholder="Enter username (optional)"
+                  />
+                </div>
+
+                <div className="flex justify-end space-x-3 pt-6 border-t border-gray-200/50 mt-6">
+                  <button
+                    type="button"
+                    onClick={closeModal}
+                    className="backdrop-blur-2xl bg-white/80 hover:bg-white/90 text-gray-700 px-6 py-3 rounded-2xl shadow-xl border-2 border-gray-200/60 hover:border-gray-300/60 transition-all duration-300 transform hover:scale-105 font-semibold"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="button"
+                    onClick={modalType === 'edit' ? handleUpdateCustomer : handleAddCustomer}
+                    className="backdrop-blur-2xl bg-gradient-to-br from-purple-500/90 to-purple-600/90 hover:from-purple-600/95 hover:to-purple-700/95 text-white px-6 py-3 rounded-2xl shadow-xl shadow-purple-500/30 hover:shadow-purple-500/50 border-2 border-white/30 hover:border-white/50 transition-all duration-300 transform hover:scale-105 font-semibold"
+                  >
+                    {modalType === 'edit' ? '💾 Update Customer' : '➕ Add Customer'}
+                  </button>
+                </div>
+              </form>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+};
+
+export default AdminCustomersPage;

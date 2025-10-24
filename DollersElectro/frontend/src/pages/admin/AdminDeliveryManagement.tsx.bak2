@@ -1,0 +1,666 @@
+import React, { useState, useEffect, useCallback } from 'react';
+import { useNavigate } from 'react-router-dom';
+import { orderAPI, Order } from '../../services/api/orderAPI';
+import { 
+  TruckIcon, 
+  CheckCircleIcon, 
+  ClockIcon, 
+  ExclamationTriangleIcon,
+  EyeIcon,
+  PencilIcon,
+  ArrowLeftIcon,
+  MagnifyingGlassIcon,
+  HomeIcon,
+  ChartBarIcon
+} from '@heroicons/react/24/outline';
+import { toast } from 'react-hot-toast';
+
+const AdminDeliveryManagement: React.FC = () => {
+  const navigate = useNavigate();
+  const [orders, setOrders] = useState<Order[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [selectedOrder, setSelectedOrder] = useState<Order | null>(null);
+  const [showOrderModal, setShowOrderModal] = useState(false);
+  const [showUpdateModal, setShowUpdateModal] = useState(false);
+  const [searchTerm, setSearchTerm] = useState('');
+  const [statusFilter, setStatusFilter] = useState('all');
+  const [deliveryFilter, setDeliveryFilter] = useState('all');
+
+  const [updateForm, setUpdateForm] = useState({
+    deliveryStatus: '',
+    trackingNumber: '',
+    carrier: '',
+    estimatedDelivery: '',
+    deliveryNotes: '',
+    internalNotes: ''
+  });
+
+  const fetchOrders = useCallback(async () => {
+    try {
+      setLoading(true);
+      const response = await orderAPI.getAdminOrders({
+        status: statusFilter !== 'all' ? statusFilter : undefined,
+        deliveryStatus: deliveryFilter !== 'all' ? deliveryFilter : undefined
+      });
+      
+      if (response.success) {
+        setOrders(response.data.orders);
+      } else {
+        toast.error('Failed to fetch orders');
+      }
+    } catch (error) {
+
+      toast.error('Failed to fetch orders');
+    } finally {
+      setLoading(false);
+    }
+  }, [statusFilter, deliveryFilter]);
+
+  useEffect(() => {
+    fetchOrders();
+  }, [fetchOrders]);
+
+  const handleUpdateDelivery = async () => {
+    if (!selectedOrder) return;
+
+    try {
+      // Call API to update delivery status
+      await orderAPI.updateDeliveryStatus(
+        selectedOrder._id,
+        updateForm.deliveryStatus,
+        updateForm.trackingNumber,
+        updateForm.carrier
+      );
+      
+      // Refresh orders
+      await fetchOrders();
+      
+      toast.success('Delivery status updated successfully');
+      setShowUpdateModal(false);
+      setSelectedOrder(null);
+      resetUpdateForm();
+    } catch (error) {
+
+      toast.error('Failed to update delivery status');
+    }
+  };
+
+  const resetUpdateForm = () => {
+    setUpdateForm({
+      deliveryStatus: '',
+      trackingNumber: '',
+      carrier: '',
+      estimatedDelivery: '',
+      deliveryNotes: '',
+      internalNotes: ''
+    });
+  };
+
+  const openUpdateModal = (order: Order) => {
+    setSelectedOrder(order);
+    setUpdateForm({
+      deliveryStatus: order.delivery.status,
+      trackingNumber: order.delivery.trackingNumber || '',
+      carrier: order.delivery.carrier || '',
+      estimatedDelivery: order.delivery.estimatedDelivery || '',
+      deliveryNotes: order.delivery.deliveryNotes || '',
+      internalNotes: order.internalNotes || ''
+    });
+    setShowUpdateModal(true);
+  };
+
+  const openOrderModal = (order: Order) => {
+    setSelectedOrder(order);
+    setShowOrderModal(true);
+  };
+
+  const getDeliveryStatusIcon = (status: string) => {
+    switch (status) {
+      case 'delivered': return <CheckCircleIcon className="h-5 w-5 text-green-500" />;
+      case 'shipped': return <TruckIcon className="h-5 w-5 text-blue-500" />;
+      case 'processing': return <ClockIcon className="h-5 w-5 text-blue-700" />;
+      case 'failed': return <ExclamationTriangleIcon className="h-5 w-5 text-red-500" />;
+      case 'returned': return <ExclamationTriangleIcon className="h-5 w-5" />;
+      default: return <ClockIcon className="h-5 w-5" />;
+    }
+  };
+
+  const filteredOrders = orders.filter(order => {
+    // Safe customer name extraction
+    let customerName = '';
+    let customerEmail = '';
+    
+    if (order.customer) {
+      if (typeof order.customer === 'string') {
+        customerName = order.customer;
+      } else {
+        customerName = `${(order.customer as any).firstName || ''} ${(order.customer as any).lastName || ''}`.trim();
+        customerEmail = (order.customer as any).email || '';
+      }
+    }
+    
+    const matchesSearch = 
+      order.orderNumber.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      customerName.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      customerEmail.toLowerCase().includes(searchTerm.toLowerCase());
+    
+    const matchesStatus = statusFilter === 'all' || order.status === statusFilter;
+    const matchesDelivery = deliveryFilter === 'all' || order.delivery?.status === deliveryFilter;
+    
+    return matchesSearch && matchesStatus && matchesDelivery;
+  });
+
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-blue-50 via-white to-purple-50 flex items-center justify-center">
+        <div className="text-center backdrop-blur-2xl bg-white/80 rounded-3xl p-12 shadow-2xl border-2 border-white/60">
+          <div className="animate-spin rounded-full h-20 w-20 border-4 border-orange-200 border-t-orange-600 mx-auto"></div>
+          <p className="mt-6 text-gray-700 font-semibold text-lg">Loading orders...</p>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="min-h-screen bg-gradient-to-br from-blue-50 via-white to-purple-50">
+      {/* Header - iOS 26 Glassy Style */}
+      <div className="sticky top-0 z-40 backdrop-blur-2xl bg-white/70 border-b border-white/60 shadow-lg shadow-gray-200/50">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+          {/* Navigation Breadcrumb */}
+          <div className="py-4 border-b border-gray-200">
+            <nav className="flex items-center space-x-2 text-sm text-gray-500">
+              <button
+                onClick={() => navigate('/admin')}
+                className="flex items-center hover:text-gray-700 transition-colors"
+              >
+                <HomeIcon className="w-4 h-4 mr-1" />
+                Admin Dashboard
+              </button>
+              <span className="text-gray-400">/</span>
+              <span className="text-gray-900 font-medium">Delivery Management</span>
+            </nav>
+          </div>
+          
+          <div className="py-6">
+            {/* Mobile Navigation */}
+            <div className="flex items-center justify-between mb-4 md:hidden">
+              <button
+                onClick={() => navigate(-1)}
+                className="p-2 text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded-lg transition-colors"
+                title="Go Back"
+              >
+                <ArrowLeftIcon className="w-6 h-6" />
+              </button>
+              <h1 className="text-xl font-bold text-gray-900">Delivery Management</h1>
+              <div className="w-10"></div> {/* Spacer for centering */}
+            </div>
+
+            {/* Desktop Navigation */}
+            <div className="hidden md:flex justify-between items-center">
+              <div className="flex items-center space-x-4">
+                <button
+                  onClick={() => navigate(-1)}
+                  className="p-2 text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded-lg transition-colors"
+                  title="Go Back"
+                >
+                  <ArrowLeftIcon className="w-6 h-6" />
+                </button>
+                <div>
+                  <h1 className="text-3xl font-bold text-gray-900 flex items-center">
+                    <TruckIcon className="w-8 h-8 mr-3 text-blue-600" />
+                    Delivery Management
+                  </h1>
+                  <p className="text-gray-600 mt-1">Manage and track order deliveries and shipping</p>
+                </div>
+              </div>
+              
+              <div className="flex items-center space-x-4">
+                <span className="text-sm text-gray-500">
+                  Total Orders: {orders.length}
+                </span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div className="max-w-7xl mx-auto py-6 sm:px-6 lg:px-8">
+        {/* Stats Cards - iOS 26 Glassy Style */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
+          <div className="group backdrop-blur-2xl bg-white/80 hover:bg-white/90 rounded-2xl shadow-xl shadow-blue-500/10 hover:shadow-blue-500/20 border-2 border-white/60 hover:border-blue-200/60 p-6 transition-all duration-300 transform hover:scale-105 cursor-pointer">
+            <div className="flex items-center">
+              <div className="p-3 rounded-2xl bg-gradient-to-br from-blue-500/90 to-blue-600/90 shadow-lg shadow-blue-500/50 group-hover:scale-110 transition-transform duration-300">
+                <TruckIcon className="h-6 w-6 text-white" />
+              </div>
+              <div className="ml-4 flex-1">
+                <p className="text-sm font-medium text-gray-600">Total Orders</p>
+                <p className="text-2xl font-bold text-gray-900">{orders.length}</p>
+              </div>
+            </div>
+          </div>
+
+          <div className="group backdrop-blur-2xl bg-white/80 hover:bg-white/90 rounded-2xl shadow-xl shadow-green-500/10 hover:shadow-green-500/20 border-2 border-white/60 hover:border-green-200/60 p-6 transition-all duration-300 transform hover:scale-105 cursor-pointer">
+            <div className="flex items-center">
+              <div className="p-3 rounded-2xl bg-gradient-to-br from-green-500/90 to-green-600/90 shadow-lg shadow-green-500/50 group-hover:scale-110 transition-transform duration-300">
+                <CheckCircleIcon className="h-6 w-6 text-white" />
+              </div>
+              <div className="ml-4 flex-1">
+                <p className="text-sm font-medium text-gray-600">Delivered</p>
+                <p className="text-2xl font-bold text-gray-900">{orders.filter(o => o.delivery.status === 'delivered').length}</p>
+              </div>
+            </div>
+          </div>
+
+          <div className="group backdrop-blur-2xl bg-white/80 hover:bg-white/90 rounded-2xl shadow-xl shadow-indigo-500/10 hover:shadow-indigo-500/20 border-2 border-white/60 hover:border-indigo-200/60 p-6 transition-all duration-300 transform hover:scale-105 cursor-pointer">
+            <div className="flex items-center">
+              <div className="p-3 rounded-2xl bg-gradient-to-br from-indigo-500/90 to-indigo-600/90 shadow-lg shadow-indigo-500/50 group-hover:scale-110 transition-transform duration-300">
+                <ClockIcon className="h-6 w-6 text-white" />
+              </div>
+              <div className="ml-4 flex-1">
+                <p className="text-sm font-medium text-gray-600">In Transit</p>
+                <p className="text-2xl font-bold text-gray-900">{orders.filter(o => ['shipped', 'out_for_delivery'].includes(o.delivery.status)).length}</p>
+              </div>
+            </div>
+          </div>
+
+          <div className="group backdrop-blur-2xl bg-white/80 hover:bg-white/90 rounded-2xl shadow-xl shadow-purple-500/10 hover:shadow-purple-500/20 border-2 border-white/60 hover:border-purple-200/60 p-6 transition-all duration-300 transform hover:scale-105 cursor-pointer">
+            <div className="flex items-center">
+              <div className="p-3 rounded-2xl bg-gradient-to-br from-purple-500/90 to-purple-600/90 shadow-lg shadow-purple-500/50 group-hover:scale-110 transition-transform duration-300">
+                <ChartBarIcon className="h-6 w-6 text-white" />
+              </div>
+              <div className="ml-4 flex-1">
+                <p className="text-sm font-medium text-gray-600">Filtered Results</p>
+                <p className="text-2xl font-bold text-gray-900">{filteredOrders.length}</p>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Main Content - iOS 26 Glassy Style */}
+        <div className="backdrop-blur-2xl bg-white/80 rounded-2xl shadow-xl border-2 border-white/60 overflow-hidden">
+          <div className="px-6 py-4 border-b border-gray-200/50 bg-gradient-to-r from-white/50 to-white/30">
+            <h3 className="text-lg font-bold text-gray-900">Delivery Management</h3>
+          </div>
+          
+          {/* Search and Filters - iOS 26 Glassy Style */}
+          <div className="px-6 py-4 border-b border-gray-200/50 bg-gradient-to-r from-white/30 to-white/10">
+            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between space-y-4 sm:space-y-0">
+              <div className="flex-1 max-w-lg">
+                <div className="relative">
+                  <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
+                    <MagnifyingGlassIcon className="h-5 w-5 text-gray-500" />
+                  </div>
+                  <input
+                    type="text"
+                    placeholder="Search orders..."
+                    value={searchTerm}
+                    onChange={(e) => setSearchTerm(e.target.value)}
+                    className="block w-full pl-12 pr-4 py-3 backdrop-blur-xl bg-white/60 border-2 border-white/40 rounded-2xl text-sm focus:outline-none focus:ring-2 focus:ring-orange-400/50 focus:border-orange-300 focus:bg-white/75 text-gray-900 placeholder-gray-500 shadow-sm transition-all duration-300"
+                  />
+                </div>
+              </div>
+              
+              <div className="flex items-center space-x-4">
+                <select
+                  value={statusFilter}
+                  onChange={(e) => setStatusFilter(e.target.value)}
+                  className="block w-full pl-4 pr-10 py-3 backdrop-blur-xl bg-white/60 border-2 border-white/40 rounded-2xl text-sm focus:outline-none focus:ring-2 focus:ring-orange-400/50 focus:border-orange-300 focus:bg-white/75 text-gray-900 shadow-sm transition-all duration-300 appearance-none cursor-pointer font-medium"
+                  style={{
+                    backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 24 24' stroke='%236b7280'%3E%3Cpath stroke-linecap='round' stroke-linejoin='round' stroke-width='2' d='M19 9l-7 7-7-7'%3E%3C/path%3E%3C/svg%3E")`,
+                    backgroundPosition: 'right 0.75rem center',
+                    backgroundRepeat: 'no-repeat',
+                    backgroundSize: '1.5rem 1.5rem',
+                    paddingRight: '2.5rem'
+                  }}
+                >
+                  <option value="all">All Order Status</option>
+                  <option value="pending">Pending</option>
+                  <option value="confirmed">Confirmed</option>
+                  <option value="processing">Processing</option>
+                  <option value="shipped">Shipped</option>
+                  <option value="delivered">Delivered</option>
+                  <option value="cancelled">Cancelled</option>
+                  <option value="refunded">Refunded</option>
+                </select>
+                <select
+                  value={deliveryFilter}
+                  onChange={(e) => setDeliveryFilter(e.target.value)}
+                  className="block w-full pl-4 pr-10 py-3 backdrop-blur-xl bg-white/60 border-2 border-white/40 rounded-2xl text-sm focus:outline-none focus:ring-2 focus:ring-orange-400/50 focus:border-orange-300 focus:bg-white/75 text-gray-900 shadow-sm transition-all duration-300 appearance-none cursor-pointer font-medium"
+                  style={{
+                    backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 24 24' stroke='%236b7280'%3E%3Cpath stroke-linecap='round' stroke-linejoin='round' stroke-width='2' d='M19 9l-7 7-7-7'%3E%3C/path%3E%3C/svg%3E")`,
+                    backgroundPosition: 'right 0.75rem center',
+                    backgroundRepeat: 'no-repeat',
+                    backgroundSize: '1.5rem 1.5rem',
+                    paddingRight: '2.5rem'
+                  }}
+                >
+                  <option value="all">All Delivery Status</option>
+                  <option value="pending">Pending</option>
+                  <option value="confirmed">Confirmed</option>
+                  <option value="processing">Processing</option>
+                  <option value="shipped">Shipped</option>
+                  <option value="out_for_delivery">Out for Delivery</option>
+                  <option value="delivered">Delivered</option>
+                  <option value="failed">Failed</option>
+                  <option value="returned">Returned</option>
+                </select>
+              </div>
+            </div>
+          </div>
+
+        {/* Orders Table */}
+        <div className="bg-white rounded-lg shadow overflow-hidden">
+          <div className="overflow-x-auto">
+            <table className="min-w-full divide-y divide-gray-200">
+              <thead className="bg-gray-50">
+                <tr>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    Order
+                  </th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    Customer
+                  </th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    Status
+                  </th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    Delivery
+                  </th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    Total
+                  </th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    Actions
+                  </th>
+                </tr>
+              </thead>
+              <tbody className="bg-white divide-y divide-gray-200">
+                {filteredOrders.length === 0 ? (
+                  <tr>
+                    <td colSpan={6} className="px-6 py-12 text-center">
+                      <div className="flex flex-col items-center">
+                        <ExclamationTriangleIcon className="h-12 w-12 text-gray-400 mb-4" />
+                        <h3 className="text-lg font-medium text-gray-900 mb-2">No orders found</h3>
+                        <p className="text-gray-500 mb-4">
+                          {searchTerm || statusFilter !== 'all' || deliveryFilter !== 'all'
+                            ? 'No orders match your current filters.' 
+                            : 'No orders available at the moment.'
+                          }
+                        </p>
+                      </div>
+                    </td>
+                  </tr>
+                ) : (
+                  filteredOrders.map((order) => {
+                    // Safe customer name extraction for display
+                    let customerName = 'Unknown Customer';
+                    let customerEmail = 'N/A';
+                    
+                    if (order.customer) {
+                      if (typeof order.customer === 'string') {
+                        customerName = order.customer;
+                      } else {
+                        customerName = `${(order.customer as any).firstName || ''} ${(order.customer as any).lastName || ''}`.trim() || 'Unknown Customer';
+                        customerEmail = (order.customer as any).email || 'N/A';
+                      }
+                    }
+                    
+                    return (
+                      <tr key={order._id} className="hover:bg-gray-50 transition-colors duration-150">
+                        <td className="px-6 py-4 whitespace-nowrap">
+                          <div>
+                            <div className="text-sm font-medium text-gray-900">{order.orderNumber}</div>
+                            <div className="text-sm text-gray-500">{new Date(order.orderDate).toLocaleDateString()}</div>
+                          </div>
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap">
+                          <div>
+                            <div className="text-sm font-medium text-gray-900">{customerName}</div>
+                            <div className="text-sm text-gray-500">{customerEmail}</div>
+                          </div>
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap">
+                          <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
+                            order.status === 'delivered' ? 'bg-green-100 text-green-800' :
+                            order.status === 'shipped' ? 'bg-blue-100 text-blue-800' :
+                            order.status === 'processing' ? 'bg-yellow-100 text-yellow-800' :
+                            'bg-gray-100 text-gray-800'
+                          }`}>
+                            {order.status.charAt(0).toUpperCase() + order.status.slice(1)}
+                          </span>
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap">
+                          <div className="flex items-center">
+                            {getDeliveryStatusIcon(order.delivery.status)}
+                            <span className="ml-2 text-sm text-gray-900">
+                              {order.delivery.status.charAt(0).toUpperCase() + order.delivery.status.slice(1)}
+                            </span>
+                          </div>
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                          ${order.total.toFixed(2)}
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
+                          <div className="flex space-x-2">
+                            <button
+                              onClick={() => openOrderModal(order)}
+                              className="text-blue-600 hover:text-blue-900 p-1 rounded hover:bg-blue-50 transition-colors duration-150"
+                            >
+                              <EyeIcon className="h-4 w-4" />
+                            </button>
+                            <button
+                              onClick={() => openUpdateModal(order)}
+                              className="text-green-600 hover:text-green-900 p-1 rounded hover:bg-green-50 transition-colors duration-150"
+                            >
+                              <PencilIcon className="h-4 w-4" />
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })
+                )}
+              </tbody>
+            </table>
+          </div>
+        </div>
+        </div>
+
+      </div>
+
+      {/* Order Details Modal */}
+      {showOrderModal && selectedOrder && (
+        <div className="fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full z-50">
+          <div className="relative top-20 mx-auto p-5 border w-11/12 md:w-3/4 lg:w-1/2 shadow-lg rounded-md bg-white">
+            <div className="mt-3">
+              <div className="flex justify-between items-center mb-4">
+                <h3 className="text-lg font-medium text-gray-900">Order Details</h3>
+                <button
+                  onClick={() => setShowOrderModal(false)}
+                  className="text-gray-400 hover:text-gray-600"
+                >
+                  <span className="sr-only">Close</span>
+                  <svg className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                  </svg>
+                </button>
+              </div>
+              
+              <div className="space-y-4">
+                <div>
+                  <h4 className="font-medium text-gray-900">Order Information</h4>
+                  <p className="text-sm text-gray-600">Order #: {selectedOrder.orderNumber}</p>
+                  <p className="text-sm text-gray-600">Date: {new Date(selectedOrder.orderDate).toLocaleDateString()}</p>
+                  <p className="text-sm text-gray-600">Status: {selectedOrder.status}</p>
+                  <p className="text-sm text-gray-600">Total: ${selectedOrder.total.toFixed(2)}</p>
+                </div>
+                
+                <div>
+                  <h4 className="font-medium text-gray-900">Customer Information</h4>
+                  {typeof selectedOrder.customer === 'string' ? (
+                    <p className="text-sm text-gray-600">Customer ID: {selectedOrder.customer}</p>
+                  ) : selectedOrder.customer ? (
+                    <>
+                      <p className="text-sm text-gray-600">Name: {(selectedOrder.customer as any).firstName || ''} {(selectedOrder.customer as any).lastName || ''}</p>
+                      <p className="text-sm text-gray-600">Email: {(selectedOrder.customer as any).email || 'N/A'}</p>
+                      <p className="text-sm text-gray-600">Phone: {(selectedOrder.customer as any).phone || 'N/A'}</p>
+                    </>
+                  ) : (
+                    <p className="text-sm text-gray-600">Customer information not available</p>
+                  )}
+                </div>
+                
+                <div>
+                  <h4 className="font-medium text-gray-900">Delivery Information</h4>
+                  <p className="text-sm text-gray-600">Method: {selectedOrder.delivery.method.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase())}</p>
+                  <p className="text-sm text-gray-600">Status: {selectedOrder.delivery.status}</p>
+                  {selectedOrder.delivery.trackingNumber && (
+                    <p className="text-sm text-gray-600">Tracking: {selectedOrder.delivery.trackingNumber}</p>
+                  )}
+                  {selectedOrder.delivery.carrier && (
+                    <p className="text-sm text-gray-600">Carrier: {selectedOrder.delivery.carrier}</p>
+                  )}
+                </div>
+                
+                <div>
+                  <h4 className="font-medium text-gray-900">Items</h4>
+                  <div className="space-y-2">
+                    {selectedOrder.items.map((item, index) => (
+                      <div key={index} className="flex justify-between text-sm">
+                        <span>
+                          {item.product && typeof item.product === 'object' 
+                            ? (item.product as any).name || 'Unknown Product'
+                            : typeof item.product === 'string' 
+                              ? `Product ${item.product}`
+                              : 'Unknown Product'
+                          }
+                        </span>
+                        <span>Qty: {item.quantity} × ${item.price}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Update Delivery Modal */}
+      {showUpdateModal && selectedOrder && (
+        <div className="fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full z-50">
+          <div className="relative top-20 mx-auto p-5 border w-11/12 md:w-3/4 lg:w-1/2 shadow-lg rounded-md bg-white">
+            <div className="mt-3">
+              <div className="flex justify-between items-center mb-4">
+                <h3 className="text-lg font-medium text-gray-900">Update Delivery Status</h3>
+                <button
+                  onClick={() => setShowUpdateModal(false)}
+                  className="text-gray-400 hover:text-gray-600"
+                >
+                  <span className="sr-only">Close</span>
+                  <svg className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                  </svg>
+                </button>
+              </div>
+              
+              <form onSubmit={(e) => { e.preventDefault(); handleUpdateDelivery(); }} className="space-y-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700">Delivery Status</label>
+                  <select
+                    value={updateForm.deliveryStatus}
+                    onChange={(e) => setUpdateForm({ ...updateForm, deliveryStatus: e.target.value })}
+                    className="mt-1 block w-full pl-3 pr-10 py-2 text-base border-gray-300 focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm rounded-md"
+                    required
+                  >
+                    <option value="">Select Status</option>
+                    <option value="pending">Pending</option>
+                    <option value="confirmed">Confirmed</option>
+                    <option value="processing">Processing</option>
+                    <option value="shipped">Shipped</option>
+                    <option value="out_for_delivery">Out for Delivery</option>
+                    <option value="delivered">Delivered</option>
+                    <option value="failed">Failed</option>
+                    <option value="returned">Returned</option>
+                  </select>
+                </div>
+                
+                <div>
+                  <label className="block text-sm font-medium text-gray-700">Tracking Number</label>
+                  <input
+                    type="text"
+                    value={updateForm.trackingNumber}
+                    onChange={(e) => setUpdateForm({ ...updateForm, trackingNumber: e.target.value })}
+                    className="mt-1 block w-full border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500 sm:text-sm"
+                    placeholder="Enter tracking number"
+                  />
+                </div>
+                
+                <div>
+                  <label className="block text-sm font-medium text-gray-700">Carrier</label>
+                  <input
+                    type="text"
+                    value={updateForm.carrier}
+                    onChange={(e) => setUpdateForm({ ...updateForm, carrier: e.target.value })}
+                    className="mt-1 block w-full border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500 sm:text-sm"
+                    placeholder="Enter carrier name"
+                  />
+                </div>
+                
+                <div>
+                  <label className="block text-sm font-medium text-gray-700">Estimated Delivery</label>
+                  <input
+                    type="date"
+                    value={updateForm.estimatedDelivery}
+                    onChange={(e) => setUpdateForm({ ...updateForm, estimatedDelivery: e.target.value })}
+                    className="mt-1 block w-full border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500 sm:text-sm"
+                  />
+                </div>
+                
+                <div>
+                  <label className="block text-sm font-medium text-gray-700">Delivery Notes</label>
+                  <textarea
+                    value={updateForm.deliveryNotes}
+                    onChange={(e) => setUpdateForm({ ...updateForm, deliveryNotes: e.target.value })}
+                    rows={3}
+                    className="mt-1 block w-full border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500 sm:text-sm"
+                    placeholder="Any special delivery instructions or notes"
+                  />
+                </div>
+                
+                <div>
+                  <label className="block text-sm font-medium text-gray-700">Internal Notes</label>
+                  <textarea
+                    value={updateForm.internalNotes}
+                    onChange={(e) => setUpdateForm({ ...updateForm, internalNotes: e.target.value })}
+                    rows={3}
+                    className="mt-1 block w-full border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500 sm:text-sm"
+                    placeholder="Internal notes for staff"
+                  />
+                </div>
+                
+                <div className="flex justify-end space-x-3 pt-4">
+                  <button
+                    type="button"
+                    onClick={() => setShowUpdateModal(false)}
+                    className="px-4 py-2 border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="submit"
+                    className="px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
+                  >
+                    Update Delivery
+                  </button>
+                </div>
+              </form>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+};
+
+export default AdminDeliveryManagement;

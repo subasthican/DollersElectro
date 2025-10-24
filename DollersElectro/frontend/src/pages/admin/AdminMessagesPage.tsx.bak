@@ -1,0 +1,492 @@
+import React, { useState, useEffect, useCallback } from 'react';
+import { useNavigate } from 'react-router-dom';
+import {
+  ArrowLeftIcon,
+  ChatBubbleLeftRightIcon,
+  ClockIcon,
+  ExclamationTriangleIcon,
+  HomeIcon
+} from '@heroicons/react/24/outline';
+import { toast } from 'react-hot-toast';
+import { 
+  messagesAPI, 
+  messageHelpers,
+  Message,
+  MessageStats
+} from '../../services/api/messagesAPI';
+
+const AdminMessagesPage: React.FC = () => {
+  const navigate = useNavigate();
+  const [messages, setMessages] = useState<Message[]>([]);
+  const [stats, setStats] = useState<MessageStats | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [selectedMessage, setSelectedMessage] = useState<Message | null>(null);
+  const [replyText, setReplyText] = useState('');
+  const [internalNote, setInternalNote] = useState('');
+  const [filters, setFilters] = useState({
+    status: '',
+    priority: '',
+    category: ''
+  });
+
+  // Fetch messages and stats
+  const fetchData = useCallback(async () => {
+    try {
+      setLoading(true);
+      const [messagesResponse, statsResponse] = await Promise.all([
+        messagesAPI.getAllMessages(filters),
+        messagesAPI.getMessageStats()
+      ]);
+
+      if (messagesResponse.success) {
+        setMessages(messagesResponse.data.messages);
+      }
+
+      if (statsResponse.success) {
+        setStats(statsResponse.data);
+      }
+    } catch (error) {
+
+      toast.error('Failed to fetch messages');
+    } finally {
+      setLoading(false);
+    }
+  }, [filters]);
+
+  useEffect(() => {
+    fetchData();
+  }, [fetchData]);
+
+  // Handle reply submission
+  const handleReply = async () => {
+    if (!selectedMessage || !replyText.trim()) return;
+
+    try {
+      const response = await messagesAPI.replyToMessage(selectedMessage._id, {
+        message: replyText,
+        isInternal: false
+      });
+
+      if (response.success) {
+        toast.success('Reply sent successfully!');
+        setReplyText('');
+        setSelectedMessage(response.data.message);
+        fetchData(); // Refresh messages
+      }
+    } catch (error) {
+
+      toast.error('Failed to send reply');
+    }
+  };
+
+  // Handle internal note
+  const handleInternalNote = async () => {
+    if (!selectedMessage || !internalNote.trim()) return;
+
+    try {
+      const response = await messagesAPI.addInternalNote(selectedMessage._id, {
+        note: internalNote
+      });
+
+      if (response.success) {
+        toast.success('Internal note added!');
+        setInternalNote('');
+        setSelectedMessage(response.data.message);
+        fetchData(); // Refresh messages
+      }
+    } catch (error) {
+
+      toast.error('Failed to add note');
+    }
+  };
+
+  // Update message status
+  const handleStatusUpdate = async (messageId: string, status: string) => {
+    try {
+      const response = await messagesAPI.updateMessageStatus(messageId, status);
+      if (response.success) {
+        toast.success('Status updated successfully!');
+        fetchData();
+        if (selectedMessage?._id === messageId) {
+          setSelectedMessage(response.data.message);
+        }
+      }
+    } catch (error) {
+
+      toast.error('Failed to update status');
+    }
+  };
+
+  // Open chat for a message
+  const openChat = (message: Message) => {
+    setSelectedMessage(message);
+  };
+
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-blue-50 via-white to-purple-50 flex items-center justify-center">
+        <div className="text-center backdrop-blur-2xl bg-white/80 rounded-3xl p-12 shadow-2xl border-2 border-white/60">
+          <div className="animate-spin rounded-full h-20 w-20 border-4 border-pink-200 border-t-pink-600 mx-auto"></div>
+          <p className="mt-6 text-gray-700 font-semibold text-lg">Loading messages...</p>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="min-h-screen bg-gradient-to-br from-blue-50 via-white to-purple-50">
+      {/* Header - iOS 26 Glassy Style */}
+      <div className="sticky top-0 z-40 backdrop-blur-2xl bg-white/70 border-b border-white/60 shadow-lg shadow-gray-200/50">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+          {/* Navigation Breadcrumb */}
+          <div className="py-4 border-b border-gray-200">
+            <nav className="flex items-center space-x-2 text-sm text-gray-500">
+              <button
+                onClick={() => navigate('/admin')}
+                className="flex items-center hover:text-gray-700 transition-colors"
+              >
+                <HomeIcon className="w-4 h-4 mr-1" />
+                Admin Dashboard
+              </button>
+              <span className="text-gray-400">/</span>
+              <span className="text-gray-900 font-medium">Message Management</span>
+            </nav>
+          </div>
+          
+          <div className="py-6">
+            {/* Mobile Navigation */}
+            <div className="flex items-center justify-between mb-4 md:hidden">
+              <button
+                onClick={() => navigate(-1)}
+                className="p-2 text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded-lg transition-colors"
+                title="Go Back"
+              >
+                <ArrowLeftIcon className="w-6 h-6" />
+              </button>
+              <h1 className="text-xl font-bold text-gray-900">Message Management</h1>
+              <div className="w-10"></div> {/* Spacer for centering */}
+            </div>
+
+            {/* Desktop Navigation */}
+            <div className="hidden md:flex justify-between items-center">
+              <div className="flex items-center space-x-4">
+                <button
+                  onClick={() => navigate(-1)}
+                  className="p-2 text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded-lg transition-colors"
+                  title="Go Back"
+                >
+                  <ArrowLeftIcon className="w-6 h-6" />
+                </button>
+                <div>
+                  <h1 className="text-3xl font-bold text-gray-900 flex items-center">
+                    <ChatBubbleLeftRightIcon className="w-8 h-8 mr-3 text-blue-600" />
+                    Message Management
+                  </h1>
+                  <p className="text-gray-600 mt-1">Manage and respond to customer contact messages</p>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div className="max-w-7xl mx-auto py-6 sm:px-6 lg:px-8">
+        {/* Stats Cards - iOS 26 Glassy Style */}
+        {stats && (
+          <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
+            <div className="group backdrop-blur-2xl bg-white/80 hover:bg-white/90 rounded-2xl shadow-xl shadow-blue-500/10 hover:shadow-blue-500/20 border-2 border-white/60 hover:border-blue-200/60 p-6 transition-all duration-300 transform hover:scale-105 cursor-pointer">
+              <div className="flex items-center">
+                <div className="p-3 rounded-2xl bg-gradient-to-br from-blue-500/90 to-blue-600/90 shadow-lg shadow-blue-500/50 group-hover:scale-110 transition-transform duration-300">
+                  <ChatBubbleLeftRightIcon className="h-6 w-6 text-white" />
+                </div>
+                <div className="ml-4 flex-1">
+                  <p className="text-sm font-medium text-gray-600">Total Messages</p>
+                  <p className="text-2xl font-bold text-gray-900">{stats.overview.total}</p>
+                </div>
+              </div>
+            </div>
+
+            <div className="group backdrop-blur-2xl bg-white/80 hover:bg-white/90 rounded-2xl shadow-xl shadow-yellow-500/10 hover:shadow-yellow-500/20 border-2 border-white/60 hover:border-yellow-200/60 p-6 transition-all duration-300 transform hover:scale-105 cursor-pointer">
+              <div className="flex items-center">
+                <div className="p-3 rounded-2xl bg-gradient-to-br from-yellow-500/90 to-yellow-600/90 shadow-lg shadow-yellow-500/50 group-hover:scale-110 transition-transform duration-300">
+                  <ClockIcon className="h-6 w-6 text-white" />
+                </div>
+                <div className="ml-4 flex-1">
+                  <p className="text-sm font-medium text-gray-600">Open</p>
+                  <p className="text-2xl font-bold text-gray-900">{stats.overview.open}</p>
+                </div>
+              </div>
+            </div>
+
+            <div className="group backdrop-blur-2xl bg-white/80 hover:bg-white/90 rounded-2xl shadow-xl shadow-indigo-500/10 hover:shadow-indigo-500/20 border-2 border-white/60 hover:border-indigo-200/60 p-6 transition-all duration-300 transform hover:scale-105 cursor-pointer">
+              <div className="flex items-center">
+                <div className="p-3 rounded-2xl bg-gradient-to-br from-indigo-500/90 to-indigo-600/90 shadow-lg shadow-indigo-500/50 group-hover:scale-110 transition-transform duration-300">
+                  <ExclamationTriangleIcon className="h-6 w-6 text-white" />
+                </div>
+                <div className="ml-4 flex-1">
+                  <p className="text-sm font-medium text-gray-600">High Priority</p>
+                  <p className="text-2xl font-bold text-gray-900">{stats.overview.high}</p>
+                </div>
+              </div>
+            </div>
+
+            <div className="group backdrop-blur-2xl bg-white/80 hover:bg-white/90 rounded-2xl shadow-xl shadow-red-500/10 hover:shadow-red-500/20 border-2 border-white/60 hover:border-red-200/60 p-6 transition-all duration-300 transform hover:scale-105 cursor-pointer">
+              <div className="flex items-center">
+                <div className="p-3 rounded-2xl bg-gradient-to-br from-red-500/90 to-red-600/90 shadow-lg shadow-red-500/50 group-hover:scale-110 transition-transform duration-300">
+                  <ExclamationTriangleIcon className="h-6 w-6 text-white" />
+                </div>
+                <div className="ml-4 flex-1">
+                  <p className="text-sm font-medium text-gray-600">Urgent</p>
+                  <p className="text-2xl font-bold text-gray-900">{stats.overview.urgent}</p>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Filters - iOS 26 Glassy Style */}
+        <div className="backdrop-blur-2xl bg-white/80 rounded-2xl shadow-xl border-2 border-white/60 p-6 mb-6">
+          <h3 className="text-lg font-bold text-gray-900 mb-4">Filters</h3>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <select
+              value={filters.status}
+              onChange={(e) => setFilters(prev => ({ ...prev, status: e.target.value }))}
+              className="w-full px-4 py-3 backdrop-blur-xl bg-white/60 border-2 border-white/40 rounded-2xl text-sm focus:outline-none focus:ring-2 focus:ring-pink-400/50 focus:border-pink-300 focus:bg-white/75 text-gray-900 shadow-sm transition-all duration-300 appearance-none cursor-pointer font-medium"
+              style={{
+                backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 24 24' stroke='%236b7280'%3E%3Cpath stroke-linecap='round' stroke-linejoin='round' stroke-width='2' d='M19 9l-7 7-7-7'%3E%3C/path%3E%3C/svg%3E")`,
+                backgroundPosition: 'right 0.75rem center',
+                backgroundRepeat: 'no-repeat',
+                backgroundSize: '1.5rem 1.5rem',
+                paddingRight: '2.5rem'
+              }}
+            >
+              <option value="">All Statuses</option>
+              <option value="open">Open</option>
+              <option value="in_progress">In Progress</option>
+              <option value="resolved">Resolved</option>
+              <option value="closed">Closed</option>
+            </select>
+
+            <select
+              value={filters.priority}
+              onChange={(e) => setFilters(prev => ({ ...prev, priority: e.target.value }))}
+              className="w-full px-4 py-3 backdrop-blur-xl bg-white/60 border-2 border-white/40 rounded-2xl text-sm focus:outline-none focus:ring-2 focus:ring-pink-400/50 focus:border-pink-300 focus:bg-white/75 text-gray-900 shadow-sm transition-all duration-300 appearance-none cursor-pointer font-medium"
+              style={{
+                backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 24 24' stroke='%236b7280'%3E%3Cpath stroke-linecap='round' stroke-linejoin='round' stroke-width='2' d='M19 9l-7 7-7-7'%3E%3C/path%3E%3C/svg%3E")`,
+                backgroundPosition: 'right 0.75rem center',
+                backgroundRepeat: 'no-repeat',
+                backgroundSize: '1.5rem 1.5rem',
+                paddingRight: '2.5rem'
+              }}
+            >
+              <option value="">All Priorities</option>
+              <option value="low">Low</option>
+              <option value="medium">Medium</option>
+              <option value="high">High</option>
+              <option value="urgent">Urgent</option>
+            </select>
+
+            <select
+              value={filters.category}
+              onChange={(e) => setFilters(prev => ({ ...prev, category: e.target.value }))}
+              className="w-full px-4 py-3 backdrop-blur-xl bg-white/60 border-2 border-white/40 rounded-2xl text-sm focus:outline-none focus:ring-2 focus:ring-pink-400/50 focus:border-pink-300 focus:bg-white/75 text-gray-900 shadow-sm transition-all duration-300 appearance-none cursor-pointer font-medium"
+              style={{
+                backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 24 24' stroke='%236b7280'%3E%3Cpath stroke-linecap='round' stroke-linejoin='round' stroke-width='2' d='M19 9l-7 7-7-7'%3E%3C/path%3E%3C/svg%3E")`,
+                backgroundPosition: 'right 0.75rem center',
+                backgroundRepeat: 'no-repeat',
+                backgroundSize: '1.5rem 1.5rem',
+                paddingRight: '2.5rem'
+              }}
+            >
+              <option value="">All Categories</option>
+              <option value="general">General</option>
+              <option value="technical">Technical</option>
+              <option value="sales">Sales</option>
+              <option value="support">Support</option>
+              <option value="complaint">Complaint</option>
+              <option value="feedback">Feedback</option>
+            </select>
+          </div>
+        </div>
+
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+          {/* Messages List - iOS 26 Glassy Style */}
+          <div className="lg:col-span-1">
+            <div className="backdrop-blur-2xl bg-white/80 rounded-2xl shadow-xl border-2 border-white/60 overflow-hidden">
+              <div className="p-6 border-b border-gray-200/50 bg-gradient-to-r from-white/50 to-white/30">
+                <h3 className="text-lg font-bold text-gray-900">Messages ({messages.length})</h3>
+              </div>
+              <div className="divide-y divide-gray-200 max-h-96 overflow-y-auto">
+                {messages.map((message) => (
+                  <div
+                    key={message._id}
+                    className={`p-4 cursor-pointer hover:bg-gray-50 transition-colors ${
+                      selectedMessage?._id === message._id ? 'bg-blue-50 border-l-4 border-blue-500' : ''
+                    }`}
+                    onClick={() => openChat(message)}
+                  >
+                    <div className="flex items-start justify-between">
+                      <div className="flex-1">
+                        <h4 className="text-sm font-medium text-gray-900 truncate">
+                          {message.subject}
+                        </h4>
+                        <p className="text-sm text-gray-500 mt-1">
+                          {message.user ? 
+                            `${message.user.firstName || ''} ${message.user.lastName || ''}`.trim() || 'Unknown User' : 
+                            'Unknown User'
+                          }
+                        </p>
+                        <div className="flex items-center mt-2 space-x-2">
+                          <span className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-medium ${messageHelpers.getStatusColor(message.status)}`}>
+                            {messageHelpers.formatStatus(message.status)}
+                          </span>
+                          <span className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-medium ${messageHelpers.getPriorityColor(message.priority)}`}>
+                            {messageHelpers.formatPriority(message.priority)}
+                          </span>
+                        </div>
+                      </div>
+                      <div className="text-right">
+                        <p className="text-xs text-gray-500">
+                          {messageHelpers.formatDate(message.createdAt)}
+                        </p>
+                        {message.replies.length > 0 && (
+                          <div className="mt-1 text-xs text-blue-600">
+                            {message.replies.length} reply{message.replies.length !== 1 ? 'ies' : ''}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+
+          {/* Chat Area - iOS 26 Glassy Style */}
+          <div className="lg:col-span-2">
+            {selectedMessage ? (
+              <div className="backdrop-blur-2xl bg-white/80 rounded-2xl shadow-xl border-2 border-white/60 overflow-hidden">
+                <div className="p-6 border-b border-gray-200/50 bg-gradient-to-r from-white/50 to-white/30">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <h3 className="text-lg font-bold text-gray-900">{selectedMessage.subject}</h3>
+                      <p className="text-sm text-gray-500">
+                        From: {selectedMessage.user ? 
+                          `${selectedMessage.user.firstName || ''} ${selectedMessage.user.lastName || ''}`.trim() || 'Unknown User' : 
+                          'Unknown User'
+                        } ({selectedMessage.user?.email || 'N/A'})
+                      </p>
+                    </div>
+                    <div className="flex items-center space-x-2">
+                      <select
+                        value={selectedMessage.status}
+                        onChange={(e) => handleStatusUpdate(selectedMessage._id, e.target.value)}
+                        className="px-4 py-2 backdrop-blur-xl bg-white/60 border-2 border-white/40 rounded-2xl text-sm focus:outline-none focus:ring-2 focus:ring-pink-400/50 focus:border-pink-300 focus:bg-white/75 text-gray-900 shadow-sm transition-all duration-300 appearance-none cursor-pointer font-medium"
+                        style={{
+                          backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 24 24' stroke='%236b7280'%3E%3Cpath stroke-linecap='round' stroke-linejoin='round' stroke-width='2' d='M19 9l-7 7-7-7'%3E%3C/path%3E%3C/svg%3E")`,
+                          backgroundPosition: 'right 0.5rem center',
+                          backgroundRepeat: 'no-repeat',
+                          backgroundSize: '1.25rem 1.25rem',
+                          paddingRight: '2rem'
+                        }}
+                      >
+                        <option value="open">Open</option>
+                        <option value="in_progress">In Progress</option>
+                        <option value="resolved">Resolved</option>
+                        <option value="closed">Closed</option>
+                      </select>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Message Content */}
+                <div className="p-6 border-b border-gray-200">
+                  <div className="bg-gray-50 rounded-lg p-4">
+                    <p className="text-gray-900">{selectedMessage.message}</p>
+                    <div className="mt-2 text-xs text-gray-500">
+                      {messageHelpers.formatDate(selectedMessage.createdAt)}
+                    </div>
+                  </div>
+                </div>
+
+                {/* Replies */}
+                <div className="p-6 border-b border-gray-200 max-h-64 overflow-y-auto">
+                  <h4 className="text-sm font-medium text-gray-900 mb-4">Conversation</h4>
+                  {selectedMessage.replies.map((reply, index) => (
+                    <div key={index} className={`mb-4 ${reply.isInternal ? 'bg-yellow-50' : 'bg-gray-50'} rounded-lg p-3`}>
+                      <div className="flex items-center justify-between mb-2">
+                        <span className="text-sm font-medium text-gray-900">
+                          {reply.user ? 
+                            `${reply.user.firstName || ''} ${reply.user.lastName || ''}`.trim() || 'Unknown User' : 
+                            'Unknown User'
+                          }
+                          {reply.isInternal && <span className="ml-2 text-xs text-yellow-600">(Internal)</span>}
+                        </span>
+                        <span className="text-xs text-gray-500">
+                          {messageHelpers.formatDate(reply.createdAt)}
+                        </span>
+                      </div>
+                      <p className="text-gray-700">{reply.message}</p>
+                    </div>
+                  ))}
+                </div>
+
+                {/* Reply Form */}
+                <div className="p-6">
+                  <h4 className="text-sm font-medium text-gray-900 mb-4">Send Reply</h4>
+                  <div className="space-y-4">
+                    <textarea
+                      value={replyText}
+                      onChange={(e) => setReplyText(e.target.value)}
+                      placeholder="Type your reply..."
+                      rows={3}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors resize-none"
+                    />
+                    <div className="flex space-x-3">
+                      <button
+                        onClick={handleReply}
+                        disabled={!replyText.trim()}
+                        className="flex-1 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                      >
+                        Send Reply
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Internal Note */}
+                  <div className="mt-6 pt-6 border-t border-gray-200">
+                    <h4 className="text-sm font-medium text-gray-900 mb-4">Add Internal Note</h4>
+                    <div className="space-y-4">
+                      <textarea
+                        value={internalNote}
+                        onChange={(e) => setInternalNote(e.target.value)}
+                        placeholder="Add internal note (only visible to staff)..."
+                        rows={2}
+                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors resize-none"
+                      />
+                      <button
+                        onClick={handleInternalNote}
+                        disabled={!internalNote.trim()}
+                        className="w-full px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                      >
+                        Add Note
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            ) : (
+              <div className="bg-white rounded-lg shadow p-12 text-center">
+                <ChatBubbleLeftRightIcon className="w-16 h-16 text-gray-400 mx-auto mb-4" />
+                <h3 className="text-lg font-medium text-gray-900 mb-2">Select a Message</h3>
+                <p className="text-gray-500">Choose a message from the list to start chatting</p>
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+export default AdminMessagesPage;

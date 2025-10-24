@@ -1,0 +1,822 @@
+import React, { useState, useEffect, useCallback } from 'react';
+import { useNavigate } from 'react-router-dom';
+import { 
+  ArrowLeftIcon,
+  ChatBubbleLeftRightIcon,
+  UserIcon,
+  ClockIcon,
+  ExclamationTriangleIcon,
+  PaperAirplaneIcon,
+  HomeIcon
+} from '@heroicons/react/24/outline';
+import { toast } from 'react-hot-toast';
+import { 
+  messageHelpers,
+  Message,
+  MessageStats
+} from '../../services/api/messagesAPI';
+
+const EmployeeMessagesPage: React.FC = () => {
+  const navigate = useNavigate();
+  const [messages, setMessages] = useState<Message[]>([]);
+  const [stats, setStats] = useState<MessageStats | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [selectedMessage, setSelectedMessage] = useState<Message | null>(null);
+  const [replyText, setReplyText] = useState('');
+  const [internalNote, setInternalNote] = useState('');
+  const [filters, setFilters] = useState({
+    status: '',
+    priority: '',
+    category: ''
+  });
+
+  // Fetch messages and stats
+  const fetchData = useCallback(async () => {
+    try {
+      setLoading(true);
+      setError(null);
+      
+      // Temporary mock data for testing
+      const mockMessages: Message[] = [
+        {
+          _id: '1',
+          subject: 'Product Inquiry - Smart Home Hub',
+          message: 'Hi, I\'m interested in your smart home hub. Can you tell me more about its features and compatibility?',
+          status: 'open',
+          priority: 'medium',
+          category: 'general',
+          createdAt: '2024-01-15T10:30:00Z',
+          updatedAt: '2024-01-15T10:30:00Z',
+          user: {
+            _id: 'user1',
+            firstName: 'John',
+            lastName: 'Doe',
+            email: 'john.doe@example.com',
+            username: 'johndoe',
+            role: 'customer'
+          },
+          replies: [],
+          internalNotes: [],
+          assignedTo: undefined,
+          resolvedAt: undefined,
+          firstResponseTime: undefined,
+          tags: []
+        },
+        {
+          _id: '2',
+          subject: 'Order #12345 - Delivery Issue',
+          message: 'My order was supposed to arrive yesterday but it\'s still not here. Can you help me track it?',
+          status: 'in_progress',
+          priority: 'high',
+          category: 'support',
+          createdAt: '2024-01-14T14:20:00Z',
+          updatedAt: '2024-01-15T09:15:00Z',
+          user: {
+            _id: 'user2',
+            firstName: 'Jane',
+            lastName: 'Smith',
+            email: 'jane.smith@example.com',
+            username: 'janesmith',
+            role: 'customer'
+          },
+          replies: [
+            {
+              _id: 'reply1',
+              user: {
+                _id: 'emp1',
+                firstName: 'Employee',
+                lastName: 'Support',
+                email: 'support@dollerselectro.com',
+                username: 'support',
+                role: 'employee'
+              },
+              message: 'I\'m looking into this for you. Let me check the delivery status.',
+              isInternal: false,
+              createdAt: '2024-01-15T09:15:00Z'
+            }
+          ],
+          internalNotes: [],
+          assignedTo: undefined,
+          resolvedAt: undefined,
+          firstResponseTime: undefined,
+          tags: []
+        },
+        {
+          _id: '3',
+          subject: 'Technical Support - App Connection',
+          message: 'I\'m having trouble connecting my phone to the smart home app. The app keeps crashing.',
+          status: 'resolved',
+          priority: 'medium',
+          category: 'support',
+          createdAt: '2024-01-13T16:45:00Z',
+          updatedAt: '2024-01-14T11:30:00Z',
+          user: {
+            _id: 'user3',
+            firstName: 'Mike',
+            lastName: 'Johnson',
+            email: 'mike.johnson@example.com',
+            username: 'mikejohnson',
+            role: 'customer'
+          },
+          replies: [
+            {
+              _id: 'reply2',
+              user: {
+                _id: 'emp1',
+                firstName: 'Employee',
+                lastName: 'Support',
+                email: 'support@dollerselectro.com',
+                username: 'support',
+                role: 'employee'
+              },
+              message: 'This issue has been resolved. Please try updating your app to the latest version.',
+              isInternal: false,
+              createdAt: '2024-01-14T11:30:00Z'
+            }
+          ],
+          internalNotes: [],
+          assignedTo: undefined,
+          resolvedAt: '2024-01-14T11:30:00Z',
+          firstResponseTime: '2024-01-14T10:00:00Z',
+          tags: []
+        }
+      ];
+
+      const mockStats: MessageStats = {
+        overview: {
+          total: 3,
+          open: 1,
+          inProgress: 1,
+          resolved: 1,
+          closed: 0,
+          urgent: 0,
+          high: 1
+        },
+        categories: [
+          { _id: 'inquiry', count: 1 },
+          { _id: 'support', count: 2 }
+        ]
+      };
+
+      setMessages(mockMessages);
+      setStats(mockStats);
+      
+      // Uncomment this when backend is working:
+      /*
+      const [messagesResponse, statsResponse] = await Promise.all([
+        messagesAPI.getAllMessages(filters),
+        messagesAPI.getMessageStats()
+      ]);
+
+      if (messagesResponse.success) {
+        setMessages(messagesResponse.data.messages);
+      } else {
+        setError('Failed to fetch messages');
+      }
+
+      if (statsResponse.success) {
+        setStats(statsResponse.data);
+      } else {
+        setError('Failed to fetch statistics');
+      }
+      */
+      
+    } catch (error) {
+
+      setError('Failed to connect to server. Please check your connection and try again.');
+      toast.error('Failed to fetch messages');
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    fetchData();
+  }, [fetchData]);
+
+  // Handle reply submission
+  const handleReply = async () => {
+    if (!selectedMessage || !replyText.trim()) return;
+
+    try {
+      // Temporary mock implementation
+      const newReply = {
+        _id: `reply-${Date.now()}`,
+        user: {
+          _id: 'emp1',
+          firstName: 'Employee',
+          lastName: 'Support',
+          email: 'support@dollerselectro.com',
+          username: 'support',
+          role: 'employee'
+        },
+        message: replyText,
+        isInternal: false,
+        createdAt: new Date().toISOString()
+      };
+
+      // Update the selected message with the new reply
+      const updatedMessage = {
+        ...selectedMessage,
+        replies: [...selectedMessage.replies, newReply],
+        status: selectedMessage.status === 'open' ? 'in_progress' : selectedMessage.status
+      };
+
+      setSelectedMessage(updatedMessage);
+      
+      // Update the messages list
+      setMessages(prev => prev.map(msg => 
+        msg._id === selectedMessage._id ? updatedMessage : msg
+      ));
+
+      toast.success('Reply sent successfully!');
+      setReplyText('');
+      
+      // Uncomment this when backend is working:
+      /*
+      const response = await messagesAPI.replyToMessage(selectedMessage._id, {
+        message: replyText,
+        isInternal: false
+      });
+
+      if (response.success) {
+        toast.success('Reply sent successfully!');
+        setReplyText('');
+        setSelectedMessage(response.data.message);
+        fetchData(); // Refresh messages
+      }
+      */
+    } catch (error) {
+
+      toast.error('Failed to send reply');
+    }
+  };
+
+  // Handle internal note
+  const handleInternalNote = async () => {
+    if (!selectedMessage || !internalNote.trim()) return;
+
+    try {
+      // Temporary mock implementation
+      const newNote = {
+        _id: `note-${Date.now()}`,
+        user: {
+          _id: 'emp1',
+          firstName: 'Employee',
+          lastName: 'Support',
+          email: 'support@dollerselectro.com',
+          username: 'support',
+          role: 'employee'
+        },
+        note: internalNote,
+        createdAt: new Date().toISOString()
+      };
+
+      // Update the selected message with the new internal note
+      const updatedMessage = {
+        ...selectedMessage,
+        internalNotes: [...(selectedMessage.internalNotes || []), newNote]
+      };
+
+      setSelectedMessage(updatedMessage);
+      
+      // Update the messages list
+      setMessages(prev => prev.map(msg => 
+        msg._id === selectedMessage._id ? updatedMessage : msg
+      ));
+
+      toast.success('Internal note added!');
+      setInternalNote('');
+      
+      // Uncomment this when backend is working:
+      /*
+      const response = await messagesAPI.addInternalNote(selectedMessage._id, {
+        note: internalNote
+      });
+
+      if (response.success) {
+        toast.success('Internal note added!');
+        setSelectedMessage(response.data.message);
+        fetchData(); // Refresh messages
+      }
+      */
+    } catch (error) {
+
+      toast.error('Failed to add note');
+    }
+  };
+
+  // Update message status
+  const handleStatusUpdate = async (messageId: string, status: string) => {
+    try {
+      // Temporary mock implementation
+      const updatedMessage = {
+        ...selectedMessage!,
+        status: status as Message['status'],
+        updatedAt: new Date().toISOString()
+      };
+
+      // Update the messages list
+      setMessages(prev => prev.map(msg => 
+        msg._id === messageId ? updatedMessage : msg
+      ));
+
+      // Update selected message if it's the current one
+      if (selectedMessage?._id === messageId) {
+        setSelectedMessage(updatedMessage);
+      }
+
+      toast.success('Status updated successfully!');
+      
+      // Uncomment this when backend is working:
+      /*
+      const response = await messagesAPI.updateMessageStatus(messageId, status);
+      if (response.success) {
+        toast.success('Status updated successfully!');
+        fetchData();
+        if (selectedMessage?._id === messageId) {
+          setSelectedMessage(response.data.message);
+        }
+      }
+      */
+    } catch (error) {
+
+      toast.error('Failed to update status');
+    }
+  };
+
+  // Open chat for a message
+  const openChat = (message: Message) => {
+    setSelectedMessage(message);
+  };
+
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-blue-50 via-white to-purple-50 flex items-center justify-center">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-32 w-32 border-b-2 border-blue-600 mx-auto"></div>
+          <p className="mt-4 text-gray-600">Loading messages...</p>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="min-h-screen bg-gradient-to-br from-blue-50 via-white to-purple-50">
+      {/* Header - iOS 26 Glassy Style */}
+      <div className="sticky top-0 z-40 backdrop-blur-2xl bg-white/70 border-b border-white/60 shadow-lg shadow-gray-200/50">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+          {/* Navigation Breadcrumb */}
+          <div className="py-4 border-b border-white/40">
+            <nav className="flex items-center space-x-2 text-sm text-gray-500">
+              <button
+                onClick={() => navigate('/employee')}
+                className="flex items-center hover:text-gray-700 transition-colors"
+              >
+                <HomeIcon className="w-4 h-4 mr-1" />
+                Employee Dashboard
+              </button>
+              <span className="text-gray-400">/</span>
+              <span className="text-gray-900 font-medium">Customer Messages</span>
+            </nav>
+          </div>
+          
+          <div className="py-6">
+            {/* Mobile Navigation */}
+            <div className="flex items-center justify-between mb-4 md:hidden">
+              <button
+                onClick={() => navigate(-1)}
+                className="p-2 text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded-lg transition-colors"
+                title="Go Back"
+              >
+                <ArrowLeftIcon className="w-6 h-6" />
+              </button>
+              <h1 className="text-xl font-bold text-gray-900">Customer Messages</h1>
+              <div className="w-10"></div> {/* Spacer for centering */}
+            </div>
+
+            {/* Desktop Navigation */}
+            <div className="hidden md:flex justify-between items-center">
+              <div className="flex items-center space-x-4">
+                <button
+                  onClick={() => navigate(-1)}
+                  className="p-2 text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded-lg transition-colors"
+                  title="Go Back"
+                >
+                  <ArrowLeftIcon className="w-6 h-6" />
+                </button>
+                <div>
+                  <h1 className="text-3xl font-bold text-gray-900 flex items-center">
+                    <ChatBubbleLeftRightIcon className="w-8 h-8 mr-3 text-blue-600" />
+                    Customer Messages
+                  </h1>
+                  <p className="text-gray-600 mt-1">Manage and respond to customer contact messages</p>
+                </div>
+              </div>
+              
+              <div className="flex items-center space-x-4">
+                <button
+                  onClick={() => fetchData()}
+                  disabled={loading}
+                  className="px-5 py-3 backdrop-blur-2xl bg-gradient-to-br from-green-500/90 to-green-600/90 hover:from-green-600/95 hover:to-green-700/95 disabled:from-gray-400/90 disabled:to-gray-500/90 text-white rounded-2xl shadow-xl shadow-green-500/30 hover:shadow-green-500/50 disabled:shadow-none border-2 border-white/30 hover:border-white/50 disabled:border-white/20 transition-all duration-300 transform hover:scale-105 disabled:scale-100 disabled:cursor-not-allowed font-semibold"
+                >
+                  {loading ? '🔄 Refreshing...' : '🔄 Refresh'}
+                </button>
+                <span className="text-sm font-semibold text-gray-600">Employee Dashboard</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div className="max-w-7xl mx-auto py-6 sm:px-6 lg:px-8">
+        {/* Stats Cards - iOS 26 Glassy */}
+        {stats && (
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-6 mb-6 sm:mb-8">
+            <div className="backdrop-blur-2xl bg-white/80 rounded-3xl shadow-xl border-2 border-white/60 p-6 hover:scale-105 transition-all duration-300 cursor-pointer">
+              <div className="flex items-center">
+                <div className="flex-shrink-0 p-3 rounded-2xl bg-gradient-to-br from-blue-500/90 to-blue-600/90 shadow-lg shadow-blue-500/50">
+                  <ChatBubbleLeftRightIcon className="h-6 w-6 sm:h-8 sm:w-8 text-white" />
+                </div>
+                <div className="ml-4">
+                  <p className="text-sm font-bold text-gray-600">Total Messages</p>
+                  <p className="text-3xl font-bold text-gray-900">{stats.overview.total}</p>
+                </div>
+              </div>
+            </div>
+
+            <div className="backdrop-blur-2xl bg-white/80 rounded-3xl shadow-xl border-2 border-white/60 p-6 hover:scale-105 transition-all duration-300 cursor-pointer">
+              <div className="flex items-center">
+                <div className="flex-shrink-0 p-3 rounded-2xl bg-gradient-to-br from-yellow-500/90 to-yellow-600/90 shadow-lg shadow-yellow-500/50">
+                  <ClockIcon className="h-6 w-6 sm:h-8 sm:w-8 text-white" />
+                </div>
+                <div className="ml-4">
+                  <p className="text-sm font-bold text-gray-600">Open</p>
+                  <p className="text-3xl font-bold text-gray-900">{stats.overview.open}</p>
+                </div>
+              </div>
+            </div>
+
+            <div className="backdrop-blur-2xl bg-white/80 rounded-3xl shadow-xl border-2 border-white/60 p-6 hover:scale-105 transition-all duration-300 cursor-pointer">
+              <div className="flex items-center">
+                <div className="flex-shrink-0 p-3 rounded-2xl bg-gradient-to-br from-blue-500/90 to-blue-600/90 shadow-lg shadow-blue-500/50">
+                  <ExclamationTriangleIcon className="h-6 w-6 sm:h-8 sm:w-8 text-white" />
+                </div>
+                <div className="ml-4">
+                  <p className="text-sm font-bold text-gray-600">In Progress</p>
+                  <p className="text-3xl font-bold text-gray-900">{stats.overview.inProgress}</p>
+                </div>
+              </div>
+            </div>
+
+            <div className="backdrop-blur-2xl bg-white/80 rounded-3xl shadow-xl border-2 border-white/60 p-6 hover:scale-105 transition-all duration-300 cursor-pointer">
+              <div className="flex items-center">
+                <div className="flex-shrink-0 p-3 rounded-2xl bg-gradient-to-br from-red-500/90 to-red-600/90 shadow-lg shadow-red-500/50">
+                  <ExclamationTriangleIcon className="h-6 w-6 sm:h-8 sm:w-8 text-white" />
+                </div>
+                <div className="ml-4">
+                  <p className="text-sm font-bold text-gray-600">Urgent</p>
+                  <p className="text-3xl font-bold text-gray-900">{stats.overview.urgent}</p>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Error Display */}
+        {error && (
+          <div className="bg-red-50 border border-red-200 rounded-lg p-4 mb-6">
+            <div className="flex items-center">
+              <ExclamationTriangleIcon className="h-5 w-5 text-red-400 mr-2" />
+              <div className="flex-1">
+                <p className="text-sm text-red-800">{error}</p>
+                <button
+                  onClick={() => fetchData()}
+                  className="mt-2 text-sm text-red-600 hover:text-red-800 underline"
+                >
+                  Try again
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Filters - iOS 26 Glassy */}
+        <div className="backdrop-blur-2xl bg-white/80 rounded-3xl shadow-2xl border-2 border-white/60 p-8 mb-6">
+          <h3 className="text-xl font-bold text-gray-900 mb-6">Filters</h3>
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+            <select
+              value={filters.status}
+              onChange={(e) => setFilters(prev => ({ ...prev, status: e.target.value }))}
+              className="px-4 py-3 backdrop-blur-xl bg-white/60 border-2 border-white/40 rounded-2xl focus:outline-none focus:ring-2 focus:ring-blue-400/50 focus:border-blue-300 focus:bg-white/75 text-gray-900 shadow-sm transition-all duration-300 cursor-pointer appearance-none font-medium"
+              style={{
+                backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 24 24' stroke='%236B7280'%3E%3Cpath stroke-linecap='round' stroke-linejoin='round' stroke-width='2' d='M19 9l-7 7-7-7'%3E%3C/path%3E%3C/svg%3E")`,
+                backgroundPosition: 'right 0.75rem center',
+                backgroundRepeat: 'no-repeat',
+                backgroundSize: '1.5rem',
+                paddingRight: '2.5rem'
+              }}
+            >
+              <option value="">All Statuses</option>
+              <option value="open">Open</option>
+              <option value="in_progress">In Progress</option>
+              <option value="resolved">Resolved</option>
+              <option value="closed">Closed</option>
+            </select>
+
+            <select
+              value={filters.priority}
+              onChange={(e) => setFilters(prev => ({ ...prev, priority: e.target.value }))}
+              className="px-4 py-3 backdrop-blur-xl bg-white/60 border-2 border-white/40 rounded-2xl focus:outline-none focus:ring-2 focus:ring-blue-400/50 focus:border-blue-300 focus:bg-white/75 text-gray-900 shadow-sm transition-all duration-300 cursor-pointer appearance-none font-medium"
+              style={{
+                backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 24 24' stroke='%236B7280'%3E%3Cpath stroke-linecap='round' stroke-linejoin='round' stroke-width='2' d='M19 9l-7 7-7-7'%3E%3C/path%3E%3C/svg%3E")`,
+                backgroundPosition: 'right 0.75rem center',
+                backgroundRepeat: 'no-repeat',
+                backgroundSize: '1.5rem',
+                paddingRight: '2.5rem'
+              }}
+            >
+              <option value="">All Priorities</option>
+              <option value="low">Low</option>
+              <option value="medium">Medium</option>
+              <option value="high">High</option>
+              <option value="urgent">Urgent</option>
+            </select>
+
+            <select
+              value={filters.category}
+              onChange={(e) => setFilters(prev => ({ ...prev, category: e.target.value }))}
+              className="px-4 py-3 backdrop-blur-xl bg-white/60 border-2 border-white/40 rounded-2xl focus:outline-none focus:ring-2 focus:ring-blue-400/50 focus:border-blue-300 focus:bg-white/75 text-gray-900 shadow-sm transition-all duration-300 cursor-pointer appearance-none font-medium"
+              style={{
+                backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 24 24' stroke='%236B7280'%3E%3Cpath stroke-linecap='round' stroke-linejoin='round' stroke-width='2' d='M19 9l-7 7-7-7'%3E%3C/path%3E%3C/svg%3E")`,
+                backgroundPosition: 'right 0.75rem center',
+                backgroundRepeat: 'no-repeat',
+                backgroundSize: '1.5rem',
+                paddingRight: '2.5rem'
+              }}
+            >
+              <option value="">All Categories</option>
+              <option value="general">General</option>
+              <option value="technical">Technical</option>
+              <option value="sales">Sales</option>
+              <option value="support">Support</option>
+              <option value="complaint">Complaint</option>
+              <option value="feedback">Feedback</option>
+            </select>
+          </div>
+        </div>
+
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+          {/* Messages List */}
+          <div className="lg:col-span-1">
+            <div className="bg-white rounded-lg shadow">
+              {/* Filters */}
+              <div className="p-6 border-b border-white/40">
+                <h3 className="text-base sm:text-lg font-bold bg-gradient-to-r from-gray-700 to-gray-900 bg-clip-text text-transparent">Messages ({messages.length})</h3>
+              </div>
+
+              {/* Messages */}
+              <div className="divide-y divide-gray-200 max-h-96 overflow-y-auto">
+                {messages.length > 0 ? (
+                  messages.map((message) => (
+                    <div
+                      key={message._id}
+                      className={`p-4 cursor-pointer hover:bg-gray-50 transition-colors ${
+                        selectedMessage?._id === message._id ? 'bg-blue-50 border-l-4 border-blue-500' : ''
+                      }`}
+                      onClick={() => openChat(message)}
+                    >
+                      <div className="flex items-start justify-between">
+                        <div className="flex-1">
+                          <h4 className="text-sm font-medium text-gray-900 truncate">
+                            {message.subject}
+                          </h4>
+                          <p className="text-sm text-gray-500 mt-1">
+                            {message.user ? 
+                              `${message.user.firstName || ''} ${message.user.lastName || ''}`.trim() || 'Unknown User' : 
+                              'Unknown User'
+                            }
+                          </p>
+                          <div className="flex items-center mt-2 space-x-2">
+                            <span className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-medium ${messageHelpers.getStatusColor(message.status)}`}>
+                              {messageHelpers.formatStatus(message.status)}
+                            </span>
+                            <span className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-medium ${messageHelpers.getPriorityColor(message.priority)}`}>
+                              {messageHelpers.formatPriority(message.priority)}
+                            </span>
+                          </div>
+                        </div>
+                        <div className="text-right">
+                          <p className="text-xs text-gray-500">
+                            {messageHelpers.formatDate(message.createdAt)}
+                          </p>
+                          {message.replies.length > 0 && (
+                            <div className="mt-1 text-xs text-blue-600">
+                              {message.replies.length} reply{message.replies.length !== 1 ? 'ies' : ''}
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  ))
+                ) : (
+                  <div className="p-8 text-center">
+                    <ChatBubbleLeftRightIcon className="h-12 w-12 text-gray-400 mx-auto mb-3" />
+                    <h3 className="text-sm font-medium text-gray-900 mb-1">No Messages Found</h3>
+                    <p className="text-xs text-gray-500">
+                      {Object.values(filters).some(f => f !== '') 
+                        ? 'Try adjusting your filters to see more messages'
+                        : 'No customer messages have been received yet'
+                      }
+                    </p>
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+
+          {/* Message Detail */}
+          <div className="lg:col-span-2">
+            {selectedMessage ? (
+              <div className="bg-white rounded-lg shadow">
+                <div className="p-6">
+                  {/* Message Header */}
+                  <div className="flex items-start justify-between mb-4">
+                    <div>
+                      <h2 className="text-xl font-semibold text-gray-900 mb-2">
+                        {selectedMessage.subject}
+                      </h2>
+                      <div className="flex items-center space-x-4 text-sm text-gray-500">
+                        <div className="flex items-center">
+                          <UserIcon className="h-4 w-4 mr-1" />
+                          {selectedMessage.user ? 
+                            `${selectedMessage.user.firstName || ''} ${selectedMessage.user.lastName || ''}`.trim() || 'Unknown User' : 
+                            'Unknown User'
+                          }
+                        </div>
+                        <div className="flex items-center">
+                          <ClockIcon className="h-4 w-4 mr-1" />
+                          {messageHelpers.formatDate(selectedMessage.createdAt)}
+                        </div>
+                      </div>
+                    </div>
+                    <div className="flex items-center space-x-2">
+                      <span className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-medium ${messageHelpers.getStatusColor(selectedMessage.status)}`}>
+                        {messageHelpers.formatStatus(selectedMessage.status)}
+                      </span>
+                      <span className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-medium ${messageHelpers.getPriorityColor(selectedMessage.priority)}`}>
+                        {messageHelpers.formatPriority(selectedMessage.priority)}
+                      </span>
+                    </div>
+                  </div>
+
+                  {/* Customer Email */}
+                  <div className="mb-4 p-3 bg-gray-50 rounded-lg">
+                    <p className="text-sm text-gray-600 mb-1">Customer Email:</p>
+                    <p className="text-sm font-medium text-gray-900">{selectedMessage.user?.email || 'N/A'}</p>
+                  </div>
+
+                  {/* Message Content */}
+                  <div className="mb-6">
+                    <h3 className="text-sm font-medium text-gray-700 mb-2">Message:</h3>
+                    <div className="p-4 bg-gray-50 rounded-lg">
+                      <p className="text-gray-900">{selectedMessage.message}</p>
+                    </div>
+                  </div>
+
+                  {/* Status Update */}
+                  <div className="mb-6">
+                    <h3 className="text-sm font-medium text-gray-700 mb-2">Update Status:</h3>
+                    <div className="flex space-x-2">
+                      {['open', 'in_progress', 'resolved', 'closed'].map((status) => (
+                        <button
+                          key={status}
+                          onClick={() => handleStatusUpdate(selectedMessage._id, status)}
+                          className={`px-3 py-2 text-sm rounded-lg transition-colors ${
+                            selectedMessage.status === status
+                              ? 'bg-blue-600 text-white'
+                              : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
+                          }`}
+                        >
+                          {status.charAt(0).toUpperCase() + status.slice(1).replace('_', ' ')}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* Replies */}
+                  <div className="mb-6">
+                    <h3 className="text-sm font-medium text-gray-700 mb-2">Conversation History:</h3>
+                    {selectedMessage.replies.length > 0 ? (
+                      <div className="space-y-3">
+                        {selectedMessage.replies.map((reply, index) => (
+                          <div key={index} className={`p-3 rounded-lg ${reply.isInternal ? 'bg-yellow-50' : 'bg-gray-50'}`}>
+                            <div className="flex items-center justify-between mb-2">
+                              <span className="text-sm font-medium text-gray-900">
+                                {reply.user ? 
+                                  `${reply.user.firstName || ''} ${reply.user.lastName || ''}`.trim() || 'Unknown User' : 
+                                  'Unknown User'
+                                }
+                                {reply.isInternal && <span className="ml-2 text-xs text-yellow-600">(Internal)</span>}
+                              </span>
+                              <span className="text-xs text-gray-500">
+                                {messageHelpers.formatDate(reply.createdAt)}
+                              </span>
+                            </div>
+                            <p className="text-gray-700">{reply.message}</p>
+                          </div>
+                        ))}
+                      </div>
+                    ) : (
+                      <p className="text-gray-500 text-sm">No replies yet</p>
+                    )}
+                  </div>
+
+                  {/* Internal Notes */}
+                  {selectedMessage.internalNotes && selectedMessage.internalNotes.length > 0 && (
+                    <div className="mb-6">
+                      <h3 className="text-sm font-medium text-gray-700 mb-2">Internal Notes:</h3>
+                      <div className="space-y-3">
+                        {selectedMessage.internalNotes.map((note, index) => (
+                          <div key={index} className="p-3 rounded-lg bg-yellow-50 border border-yellow-200">
+                            <div className="flex items-center justify-between mb-2">
+                              <span className="text-sm font-medium text-gray-900">
+                                {note.user ? 
+                                  `${note.user.firstName || ''} ${note.user.lastName || ''}`.trim() || 'Unknown User' : 
+                                  'Unknown User'
+                                }
+                                <span className="ml-2 text-xs text-yellow-600">(Staff Only)</span>
+                              </span>
+                              <span className="text-xs text-gray-500">
+                                {messageHelpers.formatDate(note.createdAt)}
+                              </span>
+                            </div>
+                            <p className="text-gray-700">{note.note}</p>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Reply Section */}
+                  <div>
+                    <h3 className="text-sm font-medium text-gray-700 mb-2">Reply to Customer:</h3>
+                    <textarea
+                      value={replyText}
+                      onChange={(e) => setReplyText(e.target.value)}
+                      placeholder="Type your reply here..."
+                      rows={4}
+                      className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                    />
+                    <div className="mt-3 flex justify-end">
+                      <button
+                        onClick={handleReply}
+                        disabled={!replyText.trim()}
+                        className="flex items-center px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:bg-gray-400 disabled:cursor-not-allowed transition-colors"
+                      >
+                        <PaperAirplaneIcon className="h-4 w-4 mr-2" />
+                        Send Reply
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Internal Note */}
+                  <div className="mt-6 pt-6 border-t border-gray-200">
+                    <h3 className="text-sm font-medium text-gray-700 mb-2">Add Internal Note:</h3>
+                    <textarea
+                      value={internalNote}
+                      onChange={(e) => setInternalNote(e.target.value)}
+                      placeholder="Add internal note (only visible to staff)..."
+                      rows={3}
+                      className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                    />
+                    <div className="mt-3 flex justify-end">
+                      <button
+                        onClick={handleInternalNote}
+                        disabled={!internalNote.trim()}
+                        className="px-4 py-2 bg-gray-200 text-gray-700 border border-gray-300 rounded-lg hover:bg-gray-300 transition-colors"
+                      >
+                        Add Note
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            ) : (
+              <div className="bg-white rounded-lg shadow p-12 text-center">
+                <ChatBubbleLeftRightIcon className="h-16 w-16 text-gray-400 mx-auto mb-4" />
+                <h3 className="text-lg font-medium text-gray-900 mb-2">Select a Message</h3>
+                <p className="text-gray-500">
+                  Choose a message from the list to view details and respond to customers.
+                </p>
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+export default EmployeeMessagesPage;

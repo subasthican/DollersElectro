@@ -1,0 +1,111 @@
+import React from 'react';
+import { Link, useNavigate, useLocation } from 'react-router-dom';
+import { useAppDispatch, useAppSelector } from '../../store';
+import { login } from '../../store/slices/authSlice';
+import { toast } from 'react-hot-toast';
+import LivingBulbForm from '../../components/auth/LivingBulbForm';
+
+const LoginPage: React.FC = () => {
+  const dispatch = useAppDispatch();
+  const navigate = useNavigate();
+  const location = useLocation();
+  const [isSubmitting, setIsSubmitting] = React.useState(false);
+  
+  // Read state from Redux instead of local state!
+  const { isLoading, error: reduxError } = useAppSelector((state) => state.auth);
+  
+  const from = (location.state as any)?.from?.pathname || '/';
+
+  const handleSubmit = async (data: { email: string; password: string }) => {
+    // Prevent multiple submissions
+    if (isSubmitting) {
+      return;
+    }
+
+    setIsSubmitting(true);
+    
+    try {
+      // Call backend login which now sends OTP instead of returning tokens
+      const response = await fetch('/api/auth/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(data)
+      });
+
+      const result = await response.json();
+
+      if (result.success && result.data.requiresPasswordChange) {
+        // User has temporary password, navigate directly to change password page
+        toast('Please change your temporary password', {
+          icon: '🔐',
+          duration: 3000
+        });
+        navigate('/change-password', {
+          state: {
+            changePasswordToken: result.data.changePasswordToken,
+            email: result.data.user.email,
+            firstName: result.data.user.firstName,
+            role: result.data.user.role
+          }
+        });
+      } else if (result.success && result.data.requiresOTP) {
+        // Navigate to OTP verification page
+        toast.success('Verification code sent to your email!');
+        navigate('/verify-otp', {
+          state: {
+            email: result.data.email,
+            type: 'login',
+            devOTP: result.data.devOTP // For development/simulated mode
+          }
+        });
+      } else if (!result.success) {
+        toast.error(result.message || 'Login failed');
+        setIsSubmitting(false);
+      }
+    } catch (error: any) {
+      console.error('❌ Login error:', error);
+      toast.error('Failed to login. Please try again.');
+      setIsSubmitting(false);
+    }
+  };
+
+  return (
+    <div className="min-h-screen bg-gradient-to-br from-blue-50 via-white to-purple-50 flex flex-col items-center justify-center p-4">
+      {/* Header */}
+      <div className="text-center mb-8">
+        <h1 className="text-4xl font-bold text-gray-900 mb-2">Welcome Back!</h1>
+        <p className="text-gray-600">The bulb is excited to see you again 💡</p>
+      </div>
+
+      {/* Living Bulb Form */}
+      <LivingBulbForm
+        onSubmit={handleSubmit}
+        isLoading={isLoading || isSubmitting}
+        errorMessage={reduxError || ''}
+        mode="login"
+      />
+
+      {/* Footer Links */}
+      <div className="mt-8 text-center space-y-3">
+        <p className="text-sm text-gray-600">
+          Don't have an account?{' '}
+          <Link to="/register" className="text-blue-600 hover:text-blue-800 font-medium">
+            Sign Up
+          </Link>
+        </p>
+        <p className="text-sm text-gray-600">
+          <Link to="/forgot-password" className="text-blue-600 hover:text-blue-800 font-medium">
+            Forgot Password?
+          </Link>
+        </p>
+        <p className="text-sm text-gray-600">
+          <Link to="/" className="text-gray-500 hover:text-gray-700">
+            ← Back to Home
+          </Link>
+        </p>
+      </div>
+    </div>
+  );
+};
+
+export default LoginPage;

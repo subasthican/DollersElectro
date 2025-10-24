@@ -1,0 +1,855 @@
+import React, { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
+import {
+  PlusIcon,
+  PencilIcon,
+  TrashIcon,
+  ArrowLeftIcon,
+  XMarkIcon,
+  EyeIcon,
+  EyeSlashIcon,
+  HomeIcon,
+  UserGroupIcon,
+  ChartBarIcon,
+  CheckCircleIcon,
+  XCircleIcon,
+  ExclamationTriangleIcon
+} from '@heroicons/react/24/outline';
+import { toast } from 'react-hot-toast';
+import { 
+  Employee, 
+  employeeHelpers,
+  employeesAPI
+} from '../../services/api/employeesAPI';
+
+const AdminEmployeesPage: React.FC = () => {
+  const navigate = useNavigate();
+  const [employees, setEmployees] = useState<Employee[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [showModal, setShowModal] = useState(false);
+  const [modalType, setModalType] = useState<'add' | 'edit'>('add');
+  const [editingItem, setEditingItem] = useState<Employee | null>(null);
+  const [employeeForm, setEmployeeForm] = useState({
+    firstName: '',
+    lastName: '',
+    email: '',
+    username: '',
+    position: 'staff' as 'staff' | 'supervisor' | 'manager',
+    department: '',
+    salary: '',
+    isActive: true
+  });
+  const [statusFilter, setStatusFilter] = useState<'all' | 'active' | 'inactive'>('all');
+  const [searchTerm, setSearchTerm] = useState('');
+  const [showPasswordModal, setShowPasswordModal] = useState(false);
+  const [newEmployeePassword, setNewEmployeePassword] = useState('');
+  const [newEmployeeName, setNewEmployeeName] = useState('');
+
+  // Fetch employees from database
+  const fetchEmployees = async () => {
+    try {
+      setLoading(true);
+      setError(null);
+      const response = await employeesAPI.getEmployees();
+      
+      if (response.success && response.data.employees) {
+        setEmployees(response.data.employees);
+      } else {
+        setError('Failed to fetch employees');
+      }
+    } catch (error) {
+
+      setError('Failed to fetch employees');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchEmployees();
+  }, []);
+
+  // Filter employees based on search and status
+  const filteredEmployees = employees.filter(employee => {
+    const matchesSearch = 
+      employee.firstName.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      employee.lastName.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      employee.email.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      (employee.username && employee.username.toLowerCase().includes(searchTerm.toLowerCase())) ||
+      employee.department.toLowerCase().includes(searchTerm.toLowerCase());
+    
+    const matchesStatus = statusFilter === 'all' || 
+      (statusFilter === 'active' && employee.isActive) ||
+      (statusFilter === 'inactive' && !employee.isActive);
+    
+    return matchesSearch && matchesStatus;
+  });
+
+  const openAddModal = () => {
+    setModalType('add');
+    setEditingItem(null);
+    setEmployeeForm({
+      firstName: '',
+      lastName: '',
+      email: '',
+      username: '',
+      position: 'staff',
+      department: '',
+      salary: '',
+      isActive: true
+    });
+    setShowModal(true);
+  };
+
+  const handleEditEmployee = (employee: Employee) => {
+    setEditingItem(employee);
+    setEmployeeForm({
+      firstName: employee.firstName,
+      lastName: employee.lastName,
+      email: employee.email,
+      username: employee.username || '',
+      position: employee.position as 'staff' | 'supervisor' | 'manager',
+      department: employee.department,
+      salary: employee.salary?.toString() || '',
+      isActive: employee.isActive
+    });
+    setModalType('edit');
+    setShowModal(true);
+  };
+
+  const closeModal = () => {
+    setShowModal(false);
+    setEditingItem(null);
+    setEmployeeForm({
+      firstName: '',
+      lastName: '',
+      email: '',
+      username: '',
+      position: 'staff',
+      department: '',
+      salary: '',
+      isActive: true
+    });
+  };
+
+  const handleAddEmployee = async () => {
+    // Enhanced validation
+    if (!employeeForm.firstName?.trim() || !employeeForm.lastName?.trim() || !employeeForm.email?.trim() || 
+        !employeeForm.username?.trim() || !employeeForm.department?.trim()) {
+      toast.error('Please fill in all required fields (First Name, Last Name, Email, Username, Department)');
+      return;
+    }
+
+    // Email validation
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(employeeForm.email)) {
+      toast.error('Please enter a valid email address');
+      return;
+    }
+
+    // Salary validation
+    if (employeeForm.salary && (isNaN(parseFloat(employeeForm.salary)) || parseFloat(employeeForm.salary) < 0)) {
+      toast.error('Please enter a valid salary amount');
+      return;
+    }
+
+    try {
+
+      const response = await employeesAPI.createEmployee({
+        firstName: employeeForm.firstName.trim(),
+        lastName: employeeForm.lastName.trim(),
+        email: employeeForm.email.trim().toLowerCase(),
+        username: employeeForm.username.trim(),
+        position: employeeForm.position,
+        department: employeeForm.department.trim(),
+        salary: employeeForm.salary ? parseFloat(employeeForm.salary) : undefined
+      });
+
+      if (response.success && response.data.employee) {
+        // Show success message with temporary password
+        const tempPassword = response.data.temporaryPassword;
+        const employeeName = `${response.data.employee.firstName} ${response.data.employee.lastName}`;
+        
+        if (tempPassword) {
+          // Store password and name for modal
+          setNewEmployeePassword(tempPassword);
+          setNewEmployeeName(employeeName);
+          setShowPasswordModal(true);
+          
+          // Also show a toast
+          toast.success(`Employee ${employeeName} created successfully! Check the password modal.`);
+        } else {
+          toast.success('Employee created successfully!');
+        }
+        closeModal();
+        fetchEmployees(); // Refresh the list
+      } else {
+        toast.error(response.message || 'Failed to create employee');
+      }
+    } catch (error: any) {
+
+      const errorMessage = error.response?.data?.message || error.message || 'Failed to create employee';
+      toast.error(`Create failed: ${errorMessage}`);
+    }
+  };
+
+  const handleUpdateEmployee = async () => {
+    if (!editingItem) return;
+
+    // Enhanced validation
+    if (!employeeForm.firstName?.trim() || !employeeForm.lastName?.trim() || !employeeForm.email?.trim() || 
+        !employeeForm.username?.trim() || !employeeForm.department?.trim()) {
+      toast.error('Please fill in all required fields (First Name, Last Name, Email, Username, Department)');
+      return;
+    }
+
+    // Email validation
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(employeeForm.email)) {
+      toast.error('Please enter a valid email address');
+      return;
+    }
+
+    // Salary validation
+    if (employeeForm.salary && (isNaN(parseFloat(employeeForm.salary)) || parseFloat(employeeForm.salary) < 0)) {
+      toast.error('Please enter a valid salary amount');
+      return;
+    }
+
+    try {
+
+      const response = await employeesAPI.updateEmployee(editingItem.id, {
+        firstName: employeeForm.firstName.trim(),
+        lastName: employeeForm.lastName.trim(),
+        email: employeeForm.email.trim().toLowerCase(),
+        username: employeeForm.username.trim(),
+        position: employeeForm.position,
+        department: employeeForm.department.trim(),
+        salary: employeeForm.salary ? parseFloat(employeeForm.salary) : undefined,
+        isActive: employeeForm.isActive
+      });
+
+      if (response.success && response.data.employee) {
+        toast.success('Employee updated successfully!');
+        closeModal();
+        fetchEmployees(); // Refresh the list
+      } else {
+        toast.error(response.message || 'Failed to update employee');
+      }
+    } catch (error: any) {
+
+      const errorMessage = error.response?.data?.message || error.message || 'Failed to update employee';
+      toast.error(`Update failed: ${errorMessage}`);
+    }
+  };
+
+  const handleDeleteEmployee = async (employeeId: string) => {
+    if (window.confirm('Are you sure you want to deactivate this employee? They will not be able to access the system.')) {
+      try {
+        const response = await employeesAPI.deleteEmployee(employeeId);
+        
+        if (response.success) {
+          toast.success('Employee deactivated successfully!');
+          fetchEmployees(); // Refresh the list
+        } else {
+          toast.error('Failed to deactivate employee');
+        }
+      } catch (error) {
+
+        toast.error('Failed to deactivate employee');
+      }
+    }
+  };
+
+  const handleToggleEmployeeStatus = async (employeeId: string, currentStatus: boolean) => {
+    try {
+      const response = await employeesAPI.toggleEmployeeStatus(employeeId);
+      
+      if (response.success && response.data.employee) {
+        toast.success(`Employee ${!currentStatus ? 'activated' : 'deactivated'} successfully!`);
+        fetchEmployees(); // Refresh the list
+      } else {
+        toast.error('Failed to toggle employee status');
+      }
+    } catch (error) {
+
+      toast.error('Failed to toggle employee status');
+    }
+  };
+
+  const handleBulkAction = async (action: 'activate' | 'deactivate') => {
+    try {
+      const employeesToUpdate = filteredEmployees.filter(e => 
+        action === 'activate' ? !e.isActive : e.isActive
+      );
+
+      if (employeesToUpdate.length === 0) {
+        toast.success(`No employees to ${action}`);
+        return;
+      }
+
+      const promises = employeesToUpdate.map(employee => 
+        employeesAPI.toggleEmployeeStatus(employee.id)
+      );
+
+      await Promise.all(promises);
+      toast.success(`All employees ${action}d successfully!`);
+      fetchEmployees();
+    } catch (error) {
+
+      toast.error(`Failed to ${action} employees`);
+    }
+  };
+
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-blue-50 via-white to-purple-50 flex items-center justify-center">
+        <div className="text-center backdrop-blur-2xl bg-white/80 rounded-3xl p-12 shadow-2xl border-2 border-white/60">
+          <div className="animate-spin rounded-full h-20 w-20 border-4 border-purple-200 border-t-purple-600 mx-auto"></div>
+          <p className="mt-6 text-gray-700 font-semibold text-lg">Loading employees...</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-blue-50 via-white to-purple-50 flex items-center justify-center">
+        <div className="text-center backdrop-blur-2xl bg-white/80 rounded-3xl p-12 shadow-2xl border-2 border-white/60">
+          <div className="text-6xl mb-6">⚠️</div>
+          <h2 className="text-2xl font-bold text-gray-900 mb-3">Error Loading Employees</h2>
+          <p className="text-gray-600 mb-6">{error}</p>
+          <button
+            onClick={fetchEmployees}
+            className="backdrop-blur-2xl bg-gradient-to-br from-purple-500/90 to-purple-600/90 hover:from-purple-600/95 hover:to-purple-700/95 text-white px-6 py-3 rounded-2xl shadow-xl shadow-purple-500/30 hover:shadow-purple-500/50 border-2 border-white/30 hover:border-white/50 transition-all duration-300 transform hover:scale-105 font-semibold"
+          >
+            Try Again
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="min-h-screen bg-gradient-to-br from-blue-50 via-white to-purple-50">
+      {/* Header - iOS 26 Glassy Style */}
+      <div className="sticky top-0 z-40 backdrop-blur-2xl bg-white/70 border-b border-white/60 shadow-lg shadow-gray-200/50">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+          {/* Navigation Breadcrumb */}
+          <div className="py-4 border-b border-gray-200">
+            <nav className="flex items-center space-x-2 text-sm text-gray-500">
+              <button
+                onClick={() => navigate('/admin')}
+                className="flex items-center hover:text-gray-700 transition-colors"
+              >
+                <HomeIcon className="w-4 h-4 mr-1" />
+                Admin Dashboard
+              </button>
+              <span className="text-gray-400">/</span>
+              <span className="text-gray-900 font-medium">Employee Management</span>
+            </nav>
+          </div>
+          
+          <div className="py-6">
+            {/* Mobile Navigation */}
+            <div className="flex items-center justify-between mb-4 md:hidden">
+              <button
+                onClick={() => navigate(-1)}
+                className="p-2 text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded-lg transition-colors"
+                title="Go Back"
+              >
+                <ArrowLeftIcon className="w-6 h-6" />
+              </button>
+              <h1 className="text-xl font-bold text-gray-900">Employee Management</h1>
+              <div className="w-10"></div> {/* Spacer for centering */}
+            </div>
+
+            {/* Desktop Navigation */}
+            <div className="hidden md:flex justify-between items-center">
+              <div className="flex items-center space-x-4">
+                <button
+                  onClick={() => navigate(-1)}
+                  className="p-2 text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded-lg transition-colors"
+                  title="Go Back"
+                >
+                  <ArrowLeftIcon className="w-6 h-6" />
+                </button>
+                <div>
+                  <h1 className="text-3xl font-bold text-gray-900 flex items-center">
+                    <UserGroupIcon className="w-8 h-8 mr-3 text-blue-600" />
+                    Employee Management
+                  </h1>
+                  <p className="text-gray-600 mt-1">Manage employee accounts, roles, and permissions</p>
+                </div>
+              </div>
+              
+              <div className="flex items-center space-x-4">
+                <button
+                  onClick={() => openAddModal()}
+                  className="backdrop-blur-2xl bg-gradient-to-br from-indigo-500/90 to-indigo-600/90 hover:from-indigo-600/95 hover:to-indigo-700/95 text-white px-6 py-3 rounded-2xl shadow-xl shadow-indigo-500/30 hover:shadow-indigo-500/50 border-2 border-white/30 hover:border-white/50 transition-all duration-300 transform hover:scale-105 font-semibold flex items-center"
+                >
+                  <PlusIcon className="h-5 w-5 mr-2" />
+                  Add Employee
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div className="max-w-7xl mx-auto py-6 sm:px-6 lg:px-8">
+        {/* Stats Cards - iOS 26 Glassy Style */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
+          <div className="group backdrop-blur-2xl bg-white/80 hover:bg-white/90 rounded-2xl shadow-xl shadow-indigo-500/10 hover:shadow-indigo-500/20 border-2 border-white/60 hover:border-indigo-200/60 p-6 transition-all duration-300 transform hover:scale-105 cursor-pointer">
+            <div className="flex items-center">
+              <div className="p-3 rounded-2xl bg-gradient-to-br from-indigo-500/90 to-indigo-600/90 shadow-lg shadow-indigo-500/50 group-hover:scale-110 transition-transform duration-300">
+                <UserGroupIcon className="h-6 w-6 text-white" />
+              </div>
+              <div className="ml-4 flex-1">
+                <p className="text-sm font-medium text-gray-600">Total Employees</p>
+                <p className="text-2xl font-bold text-gray-900">{employees.length}</p>
+              </div>
+            </div>
+          </div>
+
+          <div className="group backdrop-blur-2xl bg-white/80 hover:bg-white/90 rounded-2xl shadow-xl shadow-green-500/10 hover:shadow-green-500/20 border-2 border-white/60 hover:border-green-200/60 p-6 transition-all duration-300 transform hover:scale-105 cursor-pointer">
+            <div className="flex items-center">
+              <div className="p-3 rounded-2xl bg-gradient-to-br from-green-500/90 to-green-600/90 shadow-lg shadow-green-500/50 group-hover:scale-110 transition-transform duration-300">
+                <CheckCircleIcon className="h-6 w-6 text-white" />
+              </div>
+              <div className="ml-4 flex-1">
+                <p className="text-sm font-medium text-gray-600">Active Employees</p>
+                <p className="text-2xl font-bold text-gray-900">{employees.filter(e => e.isActive).length}</p>
+              </div>
+            </div>
+          </div>
+
+          <div className="group backdrop-blur-2xl bg-white/80 hover:bg-white/90 rounded-2xl shadow-xl shadow-red-500/10 hover:shadow-red-500/20 border-2 border-white/60 hover:border-red-200/60 p-6 transition-all duration-300 transform hover:scale-105 cursor-pointer">
+            <div className="flex items-center">
+              <div className="p-3 rounded-2xl bg-gradient-to-br from-red-500/90 to-red-600/90 shadow-lg shadow-red-500/50 group-hover:scale-110 transition-transform duration-300">
+                <XCircleIcon className="h-6 w-6 text-white" />
+              </div>
+              <div className="ml-4 flex-1">
+                <p className="text-sm font-medium text-gray-600">Inactive Employees</p>
+                <p className="text-2xl font-bold text-gray-900">{employees.filter(e => !e.isActive).length}</p>
+              </div>
+            </div>
+          </div>
+
+          <div className="group backdrop-blur-2xl bg-white/80 hover:bg-white/90 rounded-2xl shadow-xl shadow-purple-500/10 hover:shadow-purple-500/20 border-2 border-white/60 hover:border-purple-200/60 p-6 transition-all duration-300 transform hover:scale-105 cursor-pointer">
+            <div className="flex items-center">
+              <div className="p-3 rounded-2xl bg-gradient-to-br from-purple-500/90 to-purple-600/90 shadow-lg shadow-purple-500/50 group-hover:scale-110 transition-transform duration-300">
+                <ChartBarIcon className="h-6 w-6 text-white" />
+              </div>
+              <div className="ml-4 flex-1">
+                <p className="text-sm font-medium text-gray-600">Filtered Results</p>
+                <p className="text-2xl font-bold text-gray-900">{filteredEmployees.length}</p>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Main Content - iOS 26 Glassy Style */}
+        <div className="backdrop-blur-2xl bg-white/80 shadow-2xl rounded-3xl border-2 border-white/60 overflow-hidden">
+          <div className="px-6 py-4 border-b border-gray-200/50 bg-gradient-to-r from-white/50 to-white/30">
+            <div className="flex items-center justify-between">
+              <h3 className="text-lg font-bold text-gray-900">Employee Management</h3>
+              <div className="flex items-center space-x-3">
+                <button
+                  onClick={() => handleBulkAction('activate')}
+                  className="backdrop-blur-2xl bg-gradient-to-br from-green-500/90 to-green-600/90 hover:from-green-600/95 hover:to-green-700/95 text-white px-5 py-2.5 rounded-2xl shadow-lg shadow-green-500/30 hover:shadow-green-500/50 border-2 border-white/30 hover:border-white/50 transition-all duration-300 transform hover:scale-105 font-semibold text-sm flex items-center"
+                >
+                  ✅ Activate All
+                </button>
+                <button
+                  onClick={() => handleBulkAction('deactivate')}
+                  className="backdrop-blur-2xl bg-gradient-to-br from-orange-500/90 to-orange-600/90 hover:from-orange-600/95 hover:to-orange-700/95 text-white px-5 py-2.5 rounded-2xl shadow-lg shadow-orange-500/30 hover:shadow-orange-500/50 border-2 border-white/30 hover:border-white/50 transition-all duration-300 transform hover:scale-105 font-semibold text-sm flex items-center"
+                >
+                  ⏸️ Deactivate All
+                </button>
+              </div>
+            </div>
+          </div>
+          
+          {/* Search and Filters - iOS 26 Glassy Style */}
+          <div className="px-6 py-4 border-b border-gray-200/50 bg-gradient-to-r from-white/30 to-white/10">
+            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between space-y-4 sm:space-y-0">
+              <div className="flex-1 max-w-lg">
+                <div className="relative">
+                  <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
+                    <svg className="h-5 w-5 text-gray-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                    </svg>
+                  </div>
+                  <input
+                    type="text"
+                    placeholder="Search employees by name, email, username, or department..."
+                    value={searchTerm}
+                    onChange={(e) => setSearchTerm(e.target.value)}
+                    className="block w-full pl-12 pr-4 py-3 backdrop-blur-xl bg-white/60 border-2 border-white/40 rounded-2xl text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400/50 focus:border-indigo-300 focus:bg-white/75 text-gray-900 placeholder-gray-500 shadow-sm transition-all duration-300"
+                  />
+                </div>
+              </div>
+              
+              <div className="flex items-center space-x-4">
+                <select
+                  value={statusFilter}
+                  onChange={(e) => setStatusFilter(e.target.value as 'all' | 'active' | 'inactive')}
+                  className="block w-full pl-4 pr-10 py-3 backdrop-blur-xl bg-white/60 border-2 border-white/40 rounded-2xl text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400/50 focus:border-indigo-300 focus:bg-white/75 text-gray-900 shadow-sm transition-all duration-300 appearance-none cursor-pointer"
+                  style={{
+                    backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 24 24' stroke='%236b7280'%3E%3Cpath stroke-linecap='round' stroke-linejoin='round' stroke-width='2' d='M19 9l-7 7-7-7'%3E%3C/path%3E%3C/svg%3E")`,
+                    backgroundPosition: 'right 0.75rem center',
+                    backgroundRepeat: 'no-repeat',
+                    backgroundSize: '1.5rem 1.5rem',
+                    paddingRight: '2.5rem'
+                  }}
+                >
+                  <option value="all">All Statuses</option>
+                  <option value="active">Active Only</option>
+                  <option value="inactive">Inactive Only</option>
+                </select>
+              </div>
+            </div>
+          </div>
+          
+          {/* Employees Table - iOS 26 Glassy Style */}
+          <div className="overflow-x-auto">
+            <table className="min-w-full divide-y divide-gray-200/50">
+              <thead className="backdrop-blur-xl bg-gradient-to-r from-gray-50/80 to-white/60">
+                <tr>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    Employee
+                  </th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    Contact
+                  </th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    Role
+                  </th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    Department
+                  </th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    Status
+                  </th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    Hire Date
+                  </th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    Salary
+                  </th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    Actions
+                  </th>
+                </tr>
+              </thead>
+              <tbody className="bg-white divide-y divide-gray-200">
+                {filteredEmployees.length === 0 ? (
+                  <tr>
+                    <td colSpan={8} className="px-6 py-12 text-center">
+                      <div className="flex flex-col items-center">
+                        <ExclamationTriangleIcon className="h-12 w-12 text-gray-400 mb-4" />
+                        <h3 className="text-lg font-medium text-gray-900 mb-2">No employees found</h3>
+                        <p className="text-gray-500 mb-4">
+                          {searchTerm || statusFilter !== 'all' 
+                            ? 'No employees match your current filters.' 
+                            : 'Get started by adding your first employee.'
+                          }
+                        </p>
+                        {!searchTerm && statusFilter === 'all' && (
+                          <button
+                            onClick={() => openAddModal()}
+                            className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md text-white bg-purple-600 hover:bg-purple-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-purple-500"
+                          >
+                            <PlusIcon className="h-4 w-4 mr-2" />
+                            Add Employee
+                          </button>
+                        )}
+                      </div>
+                    </td>
+                  </tr>
+                ) : (
+                  filteredEmployees.map((employee) => {
+                    const statusInfo = employeeHelpers.getStatusColor(employee.isActive);
+                    const roleColors = employeeHelpers.getRoleColor(employee.position);
+                    
+                    return (
+                      <tr key={employee.id} className="hover:bg-gray-50 transition-colors duration-150">
+                        <td className="px-6 py-4 whitespace-nowrap">
+                          <div className="flex items-center">
+                            <div className="flex-shrink-0 h-10 w-10">
+                              <div className="h-10 w-10 rounded-full bg-purple-100 flex items-center justify-center">
+                                <span className="text-sm font-medium text-purple-700">
+                                  {employeeHelpers.getInitials(employee)}
+                                </span>
+                              </div>
+                            </div>
+                            <div className="ml-4">
+                              <div className="text-sm font-medium text-gray-900">{employeeHelpers.getFullName(employee)}</div>
+                              <div className="text-sm text-gray-500">ID: {employee.employeeId}</div>
+                              {employee.username && (
+                                <div className="text-xs text-gray-400">@{employee.username}</div>
+                              )}
+                            </div>
+                          </div>
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap">
+                          <div className="text-sm text-gray-900">{employee.email}</div>
+                          {employee.username && (
+                            <div className="text-sm text-gray-500">@{employee.username}</div>
+                          )}
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap">
+                          <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${roleColors.bg} ${roleColors.text}`}>
+                            {employee.position.charAt(0).toUpperCase() + employee.position.slice(1)}
+                          </span>
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                          {employee.department}
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap">
+                          <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${statusInfo.bg} ${statusInfo.text}`}>
+                            <span className={`w-2 h-2 rounded-full mr-2 ${statusInfo.dot}`}></span>
+                            {employee.isActive ? 'Active' : 'Inactive'}
+                          </span>
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                          {new Date(employee.hireDate).toLocaleDateString()}
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                          {employeeHelpers.formatSalary(employee.salary)}
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
+                          <div className="flex items-center space-x-2">
+                            <button
+                              onClick={() => handleEditEmployee(employee)}
+                              className="text-blue-600 hover:text-blue-900 p-1 rounded hover:bg-blue-50 transition-colors duration-150"
+                              title="Edit Employee"
+                            >
+                              <PencilIcon className="h-4 w-4" />
+                            </button>
+                            <button
+                              onClick={() => handleToggleEmployeeStatus(employee.id, employee.isActive)}
+                              className={`p-1 rounded transition-colors duration-150 ${
+                                employee.isActive 
+                                  ? 'text-blue-600 hover:text-orange-900 hover:bg-orange-50' 
+                                  : 'text-green-600 hover:text-green-900 hover:bg-green-50'
+                              }`}
+                              title={employee.isActive ? 'Deactivate Employee' : 'Activate Employee'}
+                            >
+                              {employee.isActive ? (
+                                <EyeSlashIcon className="h-4 w-4" />
+                              ) : (
+                                <EyeIcon className="h-4 w-4" />
+                              )}
+                            </button>
+                            <button
+                              onClick={() => handleDeleteEmployee(employee.id)}
+                              className="text-red-600 hover:text-red-900 p-1 rounded hover:bg-red-50 transition-colors duration-150"
+                              title="Deactivate Employee"
+                            >
+                              <TrashIcon className="h-4 w-4" />
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })
+                )}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
+      {/* Modal for Add/Edit - iOS 26 Glassy Style */}
+      {showModal && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm overflow-y-auto h-full w-full z-50 flex items-start justify-center p-4">
+          <div className="relative my-8 w-full max-w-2xl backdrop-blur-2xl bg-white/95 rounded-3xl shadow-2xl border-2 border-white/60 p-8">
+            <div className="flex items-center justify-between mb-6">
+              <h3 className="text-2xl font-bold bg-gradient-to-r from-indigo-600 to-purple-600 bg-clip-text text-transparent">
+                {modalType === 'edit' ? '✏️ Edit Employee' : '👨‍💼 Add New Employee'}
+              </h3>
+              <button
+                onClick={closeModal}
+                className="text-gray-400 hover:text-gray-600 p-2 hover:bg-gray-100 rounded-xl transition-all duration-300"
+              >
+                <XMarkIcon className="h-6 w-6" />
+              </button>
+            </div>
+
+              <form className="space-y-4">
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-sm font-semibold text-gray-700 mb-2">First Name *</label>
+                    <input
+                      type="text"
+                      value={employeeForm.firstName}
+                      onChange={(e) => setEmployeeForm({ ...employeeForm, firstName: e.target.value })}
+                      className="block w-full backdrop-blur-xl bg-white/60 border-2 border-white/40 rounded-2xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400/50 focus:border-indigo-300 focus:bg-white/75 text-gray-900 placeholder-gray-500 shadow-sm transition-all duration-300"
+                      placeholder="First name"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-semibold text-gray-700 mb-2">Last Name *</label>
+                    <input
+                      type="text"
+                      value={employeeForm.lastName}
+                      onChange={(e) => setEmployeeForm({ ...employeeForm, lastName: e.target.value })}
+                      className="block w-full backdrop-blur-xl bg-white/60 border-2 border-white/40 rounded-2xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400/50 focus:border-indigo-300 focus:bg-white/75 text-gray-900 placeholder-gray-500 shadow-sm transition-all duration-300"
+                      placeholder="Last name"
+                    />
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700">Email *</label>
+                  <input
+                    type="email"
+                    value={employeeForm.email}
+                    onChange={(e) => setEmployeeForm({ ...employeeForm, email: e.target.value })}
+                    className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-purple-500 focus:border-purple-500"
+                    placeholder="Enter email address"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700">Username *</label>
+                  <input
+                    type="text"
+                    value={employeeForm.username}
+                    onChange={(e) => setEmployeeForm({ ...employeeForm, username: e.target.value })}
+                    className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-purple-500 focus:border-purple-500"
+                    placeholder="Enter username"
+                  />
+                </div>
+
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-sm font-semibold text-gray-700 mb-2">Position *</label>
+                    <select
+                      value={employeeForm.position}
+                      onChange={(e) => setEmployeeForm({ ...employeeForm, position: e.target.value as 'staff' | 'supervisor' | 'manager' })}
+                      className="block w-full backdrop-blur-xl bg-white/60 border-2 border-white/40 rounded-2xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400/50 focus:border-indigo-300 focus:bg-white/75 text-gray-900 placeholder-gray-500 shadow-sm transition-all duration-300"
+                    >
+                      <option value="staff">Staff</option>
+                      <option value="supervisor">Supervisor</option>
+                      <option value="manager">Manager</option>
+                    </select>
+                  </div>
+                  {modalType === 'edit' && (
+                    <div>
+                      <label className="block text-sm font-semibold text-gray-700 mb-2">Status</label>
+                      <select
+                        value={employeeForm.isActive ? 'active' : 'inactive'}
+                        onChange={(e) => setEmployeeForm({ ...employeeForm, isActive: e.target.value === 'active' })}
+                        className="block w-full backdrop-blur-xl bg-white/60 border-2 border-white/40 rounded-2xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400/50 focus:border-indigo-300 focus:bg-white/75 text-gray-900 placeholder-gray-500 shadow-sm transition-all duration-300"
+                      >
+                        <option value="active">Active</option>
+                        <option value="inactive">Inactive</option>
+                      </select>
+                    </div>
+                  )}
+                </div>
+
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-sm font-semibold text-gray-700 mb-2">Department *</label>
+                    <select
+                      value={employeeForm.department}
+                      onChange={(e) => setEmployeeForm({ ...employeeForm, department: e.target.value })}
+                      className="block w-full backdrop-blur-xl bg-white/60 border-2 border-white/40 rounded-2xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400/50 focus:border-indigo-300 focus:bg-white/75 text-gray-900 placeholder-gray-500 shadow-sm transition-all duration-300"
+                    >
+                      <option value="">Select department</option>
+                      <option value="Sales">Sales</option>
+                      <option value="Marketing">Marketing</option>
+                      <option value="Engineering">Engineering</option>
+                      <option value="Support">Support</option>
+                      <option value="HR">HR</option>
+                      <option value="Finance">Finance</option>
+                      <option value="Operations">Operations</option>
+                      <option value="IT">IT</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-sm font-semibold text-gray-700 mb-2">Salary *</label>
+                    <input
+                      type="number"
+                      value={employeeForm.salary}
+                      onChange={(e) => setEmployeeForm({ ...employeeForm, salary: e.target.value })}
+                      className="block w-full backdrop-blur-xl bg-white/60 border-2 border-white/40 rounded-2xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400/50 focus:border-indigo-300 focus:bg-white/75 text-gray-900 placeholder-gray-500 shadow-sm transition-all duration-300"
+                      placeholder="0"
+                      min="0"
+                      step="0.01"
+                    />
+                  </div>
+                </div>
+
+                <div className="flex justify-end space-x-3 pt-6 border-t border-gray-200/50 mt-6">
+                  <button
+                    type="button"
+                    onClick={closeModal}
+                    className="backdrop-blur-2xl bg-white/80 hover:bg-white/90 text-gray-700 px-6 py-3 rounded-2xl shadow-xl border-2 border-gray-200/60 hover:border-gray-300/60 transition-all duration-300 transform hover:scale-105 font-semibold"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="button"
+                    onClick={modalType === 'edit' ? handleUpdateEmployee : handleAddEmployee}
+                    className="backdrop-blur-2xl bg-gradient-to-br from-indigo-500/90 to-indigo-600/90 hover:from-indigo-600/95 hover:to-indigo-700/95 text-white px-6 py-3 rounded-2xl shadow-xl shadow-indigo-500/30 hover:shadow-indigo-500/50 border-2 border-white/30 hover:border-white/50 transition-all duration-300 transform hover:scale-105 font-semibold"
+                  >
+                    {modalType === 'edit' ? '💾 Update Employee' : '➕ Add Employee'}
+                  </button>
+                </div>
+              </form>
+          </div>
+        </div>
+      )}
+
+      {/* Password Display Modal - iOS 26 Glassy Style */}
+      {showPasswordModal && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm overflow-y-auto h-full w-full z-50 flex items-center justify-center p-4">
+          <div className="relative w-full max-w-md backdrop-blur-2xl bg-white/95 rounded-3xl shadow-2xl border-2 border-white/60 p-8">
+            <div className="flex items-center justify-center w-16 h-16 mx-auto bg-gradient-to-br from-green-400 to-green-600 rounded-2xl shadow-lg shadow-green-500/50">
+              <CheckCircleIcon className="w-10 h-10 text-white" />
+            </div>
+            <div className="mt-6 text-center">
+              <h3 className="text-2xl font-bold bg-gradient-to-r from-green-600 to-emerald-600 bg-clip-text text-transparent">Employee Created Successfully!</h3>
+                <div className="mt-2 px-7 py-3">
+                  <p className="text-sm text-gray-500">
+                    Employee: <span className="font-semibold text-gray-900">{newEmployeeName}</span>
+                  </p>
+                  <div className="mt-4">
+                    <p className="text-sm font-medium text-gray-700 mb-2">Temporary Password:</p>
+                    <div className="backdrop-blur-xl bg-yellow-50/80 border-2 border-yellow-300/60 rounded-2xl p-4 shadow-lg">
+                      <div className="font-mono text-xl text-red-600 text-center font-bold tracking-wider">
+                        {newEmployeePassword}
+                      </div>
+                    </div>
+                    <p className="text-xs text-gray-600 mt-3 font-medium">
+                      ⚠️ Please share this password with the employee. They must change it on first login.
+                    </p>
+                  </div>
+                </div>
+                <div className="items-center px-4 py-3">
+                  <button
+                    onClick={() => {
+                      setShowPasswordModal(false);
+                      setNewEmployeePassword('');
+                      setNewEmployeeName('');
+                    }}
+                    className="backdrop-blur-2xl bg-gradient-to-br from-green-500/90 to-green-600/90 hover:from-green-600/95 hover:to-green-700/95 text-white px-6 py-3.5 rounded-2xl shadow-xl shadow-green-500/30 hover:shadow-green-500/50 border-2 border-white/30 hover:border-white/50 transition-all duration-300 transform hover:scale-105 font-bold w-full text-base"
+                  >
+                    ✅ Got it!
+                  </button>
+                </div>
+              </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+};
+
+export default AdminEmployeesPage;
