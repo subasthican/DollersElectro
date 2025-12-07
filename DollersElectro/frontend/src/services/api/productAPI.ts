@@ -208,8 +208,9 @@ export const productAPI = {
   },
 
   // Delete product (Admin only)
-  deleteProduct: async (id: string): Promise<{ success: boolean; message: string }> => {
-    const response = await api.delete(`/products/${id}`);
+  deleteProduct: async (id: string, hardDelete: boolean = false): Promise<{ success: boolean; message: string }> => {
+    const url = hardDelete ? `/products/${id}?hard=true` : `/products/${id}`;
+    const response = await api.delete(url);
     return response.data;
   },
 

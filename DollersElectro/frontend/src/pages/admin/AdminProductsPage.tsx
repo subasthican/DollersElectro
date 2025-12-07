@@ -364,27 +364,24 @@ const AdminProductsPage: React.FC = () => {
   const handleDeleteProduct = async (productId: string) => {
     if (window.confirm('Are you sure you want to PERMANENTLY DELETE this product? This action cannot be undone and will remove the product completely from the database.')) {
       try {
-        // Call the hard delete endpoint
-        const response = await fetch(`http://localhost:5001/api/products/${productId}?hard=true`, {
-          method: 'DELETE',
-          headers: {
-            'Authorization': `Bearer ${localStorage.getItem('accessToken')}`,
-            'Content-Type': 'application/json'
-          }
-        });
+        // Call the hard delete endpoint using productAPI
+        const response = await productAPI.deleteProduct(productId, true);
         
-        const result = await response.json();
-        
-        if (result.success) {
+        if (response.success) {
           // Remove product from local state completely
           const updatedProducts = products?.filter(p => p._id !== productId && p.id !== productId) || [];
           dispatch({ type: 'products/setProducts', payload: updatedProducts });
           toast.success('Product permanently deleted from database!');
+          
+          // Refresh the admin products list
+          const refreshResponse = await productAPI.getAdminProducts();
+          dispatch({ type: 'products/setProducts', payload: refreshResponse.data.products });
         } else {
-          toast.error(result.message || 'Failed to delete product');
+          toast.error(response.message || 'Failed to delete product');
         }
-      } catch (error) {
-        toast.error('Failed to delete product');
+      } catch (error: any) {
+        console.error('Delete product error:', error);
+        toast.error(error.message || 'Failed to delete product');
       }
     }
   };

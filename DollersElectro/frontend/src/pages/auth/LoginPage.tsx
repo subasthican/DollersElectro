@@ -1,7 +1,7 @@
 import React from 'react';
 import { Link, useNavigate, useLocation } from 'react-router-dom';
 import { useAppDispatch, useAppSelector } from '../../store';
-import { login } from '../../store/slices/authSlice';
+import { initializeAuth } from '../../store/slices/authSlice';
 import { toast } from 'react-hot-toast';
 import LivingBulbForm from '../../components/auth/LivingBulbForm';
 
@@ -25,7 +25,7 @@ const LoginPage: React.FC = () => {
     setIsSubmitting(true);
     
     try {
-      // Call backend login which now sends OTP instead of returning tokens
+      // Call backend login - now returns tokens directly (no OTP)
       const response = await fetch('/api/auth/login', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -34,7 +34,27 @@ const LoginPage: React.FC = () => {
 
       const result = await response.json();
 
-      if (result.success && result.data.requiresPasswordChange) {
+      if (result.success && result.data.tokens) {
+        // Direct login successful - store tokens and user data
+        localStorage.setItem('accessToken', result.data.tokens.accessToken);
+        localStorage.setItem('refreshToken', result.data.tokens.refreshToken);
+        localStorage.setItem('user', JSON.stringify(result.data.user));
+        
+        console.log('✅ Login successful');
+        console.log('📦 User data:', result.data.user);
+        
+        toast.success('Login successful!');
+        
+        // Determine target URL based on role
+        const targetUrl = result.data.user.role === 'admin' ? '/admin' : 
+                         result.data.user.role === 'employee' ? '/employee' : '/';
+        
+        // Initialize auth state from localStorage (syncs Redux state)
+        dispatch(initializeAuth());
+        
+        // Navigate to appropriate page
+        navigate(targetUrl, { replace: true });
+      } else if (result.success && result.data.requiresPasswordChange) {
         // User has temporary password, navigate directly to change password page
         toast('Please change your temporary password', {
           icon: '🔐',
@@ -48,17 +68,7 @@ const LoginPage: React.FC = () => {
             role: result.data.user.role
           }
         });
-      } else if (result.success && result.data.requiresOTP) {
-        // Navigate to OTP verification page
-        toast.success('Verification code sent to your email!');
-        navigate('/verify-otp', {
-          state: {
-            email: result.data.email,
-            type: 'login',
-            devOTP: result.data.devOTP // For development/simulated mode
-          }
-        });
-      } else if (!result.success) {
+      } else {
         toast.error(result.message || 'Login failed');
         setIsSubmitting(false);
       }

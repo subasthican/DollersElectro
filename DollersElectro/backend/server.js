@@ -102,7 +102,7 @@ app.use('/api/newsletter', newsletterRoutes);
 app.use('/api/low-stock-alerts', lowStockAlertsRoutes);
 
 // Error handling middleware
-const errorHandler = require('./middleware/errorHandler');
+const { errorHandler } = require('./middleware/errorHandler');
 app.use(errorHandler);
 
 // 404 handler
@@ -142,4 +142,5 @@ process.on('SIGTERM', async () => {
 });
 
 module.exports = app;
+
 

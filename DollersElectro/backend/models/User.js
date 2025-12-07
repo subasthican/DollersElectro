@@ -21,7 +21,14 @@ const userSchema = new mongoose.Schema({
     unique: true,
     lowercase: true,
     trim: true,
-    match: [/^\w+([.-]?\w+)*@\w+([.-]?\w+)*(\.\w{2,3})+$/, 'Please enter a valid email']
+    // Allow "admin" and "customer" as special usernames, otherwise validate email format
+    validate: {
+      validator: function(v) {
+        if (v === 'admin' || v === 'customer') return true;
+        return /^\w+([.-]?\w+)*@\w+([.-]?\w+)*(\.\w{2,3})+$/.test(v);
+      },
+      message: 'Please enter a valid email or username'
+    }
   },
   password: {
     type: String,
