@@ -137,7 +137,7 @@ const LiveChat: React.FC<LiveChatProps> = ({ messageId, onClose }) => {
 
   if (isMinimized) {
     return (
-      <div className="fixed bottom-4 right-4 w-80 bg-white rounded-lg shadow-xl border border-gray-200">
+      <div className="fixed bottom-4 right-4 w-80 bg-white rounded-lg shadow-2xl border border-gray-200">
         <div className="p-3 bg-blue-600 text-white rounded-t-lg flex items-center justify-between">
           <div className="flex items-center space-x-2">
             <ChatBubbleLeftRightIcon className="w-5 h-5" />

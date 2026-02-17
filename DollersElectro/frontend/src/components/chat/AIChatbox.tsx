@@ -181,7 +181,7 @@ const AIChatbox: React.FC<AIChatboxProps> = ({ isOpen, onClose }) => {
 
   if (isMinimized) {
     return (
-      <div className="fixed bottom-4 right-4 w-80 backdrop-blur-2xl bg-white/90 rounded-2xl shadow-2xl border border-white/60 z-50 overflow-hidden">
+      <div className="fixed bottom-4 right-4 w-80 backdrop-blur-1xl bg-white/90 rounded-2xl shadow-1xl border border-white/60 z-50 overflow-hidden">
         <div className="p-4 bg-gradient-to-r from-blue-600 to-purple-600 text-white flex items-center justify-between">
           <div className="flex items-center space-x-2">
             <SparklesIcon className="w-5 h-5 animate-pulse" />
