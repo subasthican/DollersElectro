@@ -400,7 +400,7 @@ router.get('/:id', async (req, res) => {
 });
 
 // POST /api/products - Create product (admin only)
-router.post('/', authenticateToken, requireRole('admin'), async (req, res) => {
+router.post('/',  requireRole('admin'), async (req, res) => {
   try {
     ensureMongoDB();
     
